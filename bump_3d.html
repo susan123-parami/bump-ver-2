@@ -1,0 +1,2347 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Bump scratch map · 3D</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<link href="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.css" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #0a0a0d;
+    --pill-bg: rgba(20, 20, 26, 0.72);
+    --pill-border: rgba(255, 255, 255, 0.08);
+    --pill-active: rgba(255, 255, 255, 0.12);
+    --text: #f5f5f7;
+    --text-dim: rgba(255, 255, 255, 0.55);
+    --text-faint: rgba(255, 255, 255, 0.38);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+  #map {
+    position: absolute;
+    inset: 0;
+    background: #000;
+  }
+
+  /* ---------- top persona pill bar (legacy — hidden, kept for compat) ---------- */
+  .persona-bar { display: none; }
+  .persona-bar.legacy-visible {
+    display: flex;
+    position: absolute;
+    top: 18px;
+    left: 50%;
+    transform: translateX(-50%);
+    gap: 6px;
+    z-index: 10;
+    background: var(--pill-bg);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--pill-border);
+    padding: 5px;
+    border-radius: 999px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.45);
+  }
+
+  /* ====================================================================
+     LEFT CATEGORY PANEL (primary filter — matches reference UI)
+     ==================================================================== */
+  .cat-panel {
+    position: absolute;
+    top: 18px;
+    left: 18px;
+    width: 268px;
+    max-height: calc(100vh - 36px);
+    overflow-y: auto;
+    z-index: 12;
+    background: var(--pill-bg);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border: 1px solid var(--pill-border);
+    border-radius: 14px;
+    padding: 16px 14px 16px 14px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.55);
+    color: var(--text);
+    font: 400 12px/1.35 -apple-system, system-ui, sans-serif;
+  }
+  .cat-panel::-webkit-scrollbar { width: 4px; }
+  .cat-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 4px; }
+
+  .cat-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  .cat-title {
+    font: 700 16px/1.1 -apple-system, system-ui, sans-serif;
+    letter-spacing: -0.01em;
+  }
+  .cat-beta {
+    background: linear-gradient(135deg, #ffd97a, #ff9b3a);
+    color: #2c1810;
+    font: 800 9px/1 -apple-system, system-ui, sans-serif;
+    padding: 3px 6px 2px;
+    border-radius: 999px;
+    letter-spacing: 0.06em;
+  }
+  .cat-sub {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-bottom: 14px;
+  }
+  .cat-section {
+    font-size: 10px;
+    color: var(--text-faint);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin: 12px 0 7px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .cat-section .cat-section-action {
+    font-size: 9.5px;
+    color: var(--text-dim);
+    cursor: pointer;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  .cat-section .cat-section-action:hover { color: #fff; }
+
+  .cat-list { list-style: none; margin: 0; padding: 0; }
+  .cat-item {
+    display: grid;
+    grid-template-columns: 14px 1fr auto;
+    align-items: center;
+    gap: 9px;
+    padding: 6px 4px 6px 2px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.14s ease, opacity 0.14s ease;
+    position: relative;
+  }
+  .cat-item:hover { background: rgba(255,255,255,0.04); }
+  .cat-item.muted { opacity: 0.35; }
+  .cat-item.muted .cat-dot { box-shadow: none; }
+  .cat-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--cat-color, #888);
+    box-shadow: 0 0 8px var(--cat-color, transparent), 0 0 16px rgba(var(--cat-rgb, 255,255,255), 0.4);
+    transition: box-shadow 0.18s ease;
+  }
+  .cat-name {
+    font-size: 12.5px;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .cat-name .cat-emoji { font-size: 13px; line-height: 1; }
+  .cat-count {
+    font-size: 10.5px;
+    color: var(--text-faint);
+    font-variant-numeric: tabular-nums;
+    padding-right: 2px;
+  }
+
+  /* size legend (logs) */
+  .size-legend {
+    display: flex;
+    align-items: flex-end;
+    gap: 0;
+    padding: 4px 4px 2px 4px;
+    height: 56px;
+    position: relative;
+  }
+  .size-rings {
+    position: relative;
+    width: 90px;
+    height: 56px;
+  }
+  .size-rings .ring {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    border-radius: 50%;
+    border: 1px solid rgba(255,255,255,0.32);
+    background: transparent;
+  }
+  .size-labels {
+    font-size: 10px;
+    color: var(--text-dim);
+    line-height: 1.45;
+    padding-top: 4px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* persona mini list (secondary view) */
+  .persona-mini-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px;
+  }
+  .persona-mini {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.06);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 7px 8px;
+    font: 500 11px/1.1 -apple-system, system-ui, sans-serif;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.14s ease, border-color 0.14s ease;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .persona-mini:hover { background: rgba(255,255,255,0.08); }
+  .persona-mini .pm-icon { font-size: 12px; }
+  .persona-mini[data-persona="home"]      { --accent: 255, 138, 77;  }
+  .persona-mini[data-persona="adventure"] { --accent: 122, 198, 110; }
+  .persona-mini[data-persona="traveler"]  { --accent: 95, 168, 232;  }
+  .persona-mini[data-persona="student"]   { --accent: 178, 138, 247; }
+  .persona-mini.active {
+    background: rgba(var(--accent), 0.18);
+    border-color: rgba(var(--accent), 0.45);
+    color: rgb(var(--accent));
+  }
+  .persona-mini.reset { grid-column: 1 / -1; text-align: center; justify-content: center; color: var(--text-dim); }
+
+  /* ====================================================================
+     BOTTOM VIEW-MODE TOOLBAR (Points / Heatmap / 3D Towers)
+     ==================================================================== */
+  .view-toolbar {
+    position: absolute;
+    left: 50%;
+    bottom: 18px;
+    transform: translateX(-50%);
+    z-index: 11;
+    background: var(--pill-bg);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border: 1px solid var(--pill-border);
+    border-radius: 16px;
+    padding: 6px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.55);
+    display: flex;
+    gap: 4px;
+  }
+  .vt-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-dim);
+    padding: 9px 14px 9px 12px;
+    border-radius: 12px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font: 500 11.5px/1 -apple-system, system-ui, sans-serif;
+    transition: background 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+    min-width: 92px;
+  }
+  .vt-btn:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+  .vt-btn.active {
+    background: rgba(64, 220, 255, 0.10);
+    border-color: rgba(64, 220, 255, 0.32);
+    color: #6fe7ff;
+  }
+  .vt-btn[data-mode="towers"].active {
+    background: rgba(255, 165, 90, 0.12);
+    border-color: rgba(255, 165, 90, 0.38);
+    color: #ffb978;
+  }
+  .vt-btn[data-mode="heatmap"].active {
+    background: rgba(255, 110, 175, 0.12);
+    border-color: rgba(255, 110, 175, 0.36);
+    color: #ff96bf;
+  }
+  .vt-icon {
+    width: 18px; height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .vt-icon svg { width: 18px; height: 18px; }
+  .vt-label-sub {
+    font-size: 9px;
+    color: var(--text-faint);
+    letter-spacing: 0.1em;
+    margin-right: 6px;
+    text-transform: uppercase;
+    padding-left: 4px;
+    align-self: center;
+  }
+
+  .persona-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 14px 7px 12px;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text);
+    border: 1px solid transparent;
+    font: 500 13px/1 -apple-system, system-ui, sans-serif;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+  }
+  .persona-btn:hover { background: rgba(255,255,255,0.06); }
+  .persona-btn .p-icon { font-size: 14px; line-height: 1; }
+  .persona-btn[data-persona="home"]      { --accent: 255, 138, 77;  } /* warm orange */
+  .persona-btn[data-persona="adventure"] { --accent: 122, 198, 110; } /* green */
+  .persona-btn[data-persona="traveler"]  { --accent: 95, 168, 232;  } /* sky blue */
+  .persona-btn[data-persona="student"]   { --accent: 178, 138, 247; } /* lavender */
+  .persona-btn[data-persona="all"]       { --accent: 255, 255, 255; }
+  .persona-btn.active {
+    background: rgba(var(--accent), 0.18);
+    color: rgb(var(--accent));
+    border-color: rgba(var(--accent), 0.45);
+  }
+  .persona-btn.reset {
+    margin-left: 4px;
+    border-left: 1px solid rgba(255,255,255,0.08);
+    padding-left: 16px;
+    color: var(--text-dim);
+  }
+  .persona-btn.reset.active { color: #fff; }
+
+  /* ---------- floating story card (top-right) ---------- */
+  .story-card {
+    position: absolute;
+    top: 78px;
+    right: 18px;
+    width: 340px;
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+    z-index: 11;
+    background: var(--pill-bg);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border: 1px solid var(--pill-border);
+    border-radius: 16px;
+    padding: 18px 20px 20px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.55);
+    color: var(--text);
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+    pointer-events: none;
+    transition: opacity 0.22s ease, transform 0.22s ease;
+  }
+  .story-card.visible {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+  }
+  .story-card[data-persona="home"]      { --accent: 255, 138, 77;  }
+  .story-card[data-persona="adventure"] { --accent: 122, 198, 110; }
+  .story-card[data-persona="traveler"]  { --accent: 95, 168, 232;  }
+  .story-card[data-persona="student"]   { --accent: 178, 138, 247; }
+  .story-close {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.06);
+    color: var(--text-dim);
+    border: 0;
+    font: 400 16px/1 -apple-system, system-ui, sans-serif;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 0 1px 0;
+  }
+  .story-close:hover { background: rgba(255,255,255,0.12); color: #fff; }
+  .story-icon-wrap { margin-bottom: 6px; }
+  .story-icon { font-size: 28px; line-height: 1; }
+  .story-title {
+    font: 700 19px/1.15 -apple-system, system-ui, sans-serif;
+    margin: 0 0 4px 0;
+    color: rgb(var(--accent));
+  }
+  .story-tagline {
+    font: italic 12.5px/1.4 -apple-system, system-ui, sans-serif;
+    color: var(--text-dim);
+    margin-bottom: 10px;
+  }
+  .story-body {
+    font: 400 12.5px/1.55 -apple-system, system-ui, sans-serif;
+    color: rgba(255,255,255,0.78);
+    margin: 0 0 14px 0;
+  }
+  .story-places-label {
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    color: var(--text-faint);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .story-places { display: flex; flex-direction: column; gap: 5px; }
+  .story-place {
+    text-align: left;
+    background: rgba(var(--accent), 0.10);
+    border: 1px solid rgba(var(--accent), 0.22);
+    color: var(--text);
+    border-radius: 999px;
+    padding: 7px 12px;
+    font: 500 12.5px/1.2 -apple-system, system-ui, sans-serif;
+    cursor: pointer;
+    transition: background 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
+  }
+  .story-place:hover {
+    background: rgba(var(--accent), 0.22);
+    border-color: rgba(var(--accent), 0.5);
+  }
+  .story-place:active { transform: scale(0.985); }
+  .story-place .pi { margin-right: 6px; }
+  .story-missing {
+    font-size: 10.5px;
+    color: var(--text-faint);
+    margin-top: 10px;
+    font-style: italic;
+  }
+  .story-missing:empty { display: none; }
+
+  /* ---------- bottom info card (now bottom-right, narrower) ---------- */
+  .info-card {
+    position: absolute;
+    right: 18px;
+    bottom: 22px;
+    z-index: 10;
+    width: 296px;
+    background: var(--pill-bg);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border: 1px solid var(--pill-border);
+    border-radius: 14px;
+    padding: 12px 14px 14px;
+    box-shadow: 0 6px 28px rgba(0,0,0,0.55);
+  }
+  .info-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .orbit-btn {
+    flex-shrink: 0;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.14);
+    color: #fff;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+  }
+  .orbit-btn:hover {
+    background: rgba(255,255,255,0.16);
+    border-color: rgba(255,255,255,0.22);
+  }
+  .orbit-btn:active { transform: scale(0.94); }
+  .orbit-btn svg { width: 12px; height: 12px; display: block; }
+  .orbit-btn .orbit-icon-pause { display: none; }
+  .orbit-btn.spinning .orbit-icon-play { display: none; }
+  .orbit-btn.spinning .orbit-icon-pause { display: block; }
+  .orbit-btn.spinning {
+    background: rgba(255, 110, 175, 0.18);
+    border-color: rgba(255, 110, 175, 0.45);
+    color: #ff8fbe;
+  }
+  .info-icon {
+    width: 28px; height: 28px;
+    border-radius: 7px;
+    background: linear-gradient(140deg, #ff6b3d 0%, #ffb347 100%);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+  }
+  .info-icon svg { width: 18px; height: 18px; }
+  .info-title { font-weight: 600; font-size: 14px; line-height: 1.15; }
+  .info-sub { font-size: 11px; color: var(--text-dim); margin-top: 2px; letter-spacing: 0.01em; }
+
+  .control-row {
+    display: grid;
+    grid-template-columns: 88px 1fr 64px;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+  }
+  .control-label {
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    color: var(--text-faint);
+    text-transform: uppercase;
+  }
+  .control-value {
+    font-size: 11px;
+    color: var(--text-dim);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 4px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 999px;
+    outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: #fff;
+    cursor: pointer;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.45);
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: #fff;
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.45);
+  }
+
+  /* an auto-toggle pill that sits left of the slider */
+  .auto-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 999px;
+    padding: 3px 9px;
+    font-size: 10px;
+    color: var(--text-dim);
+    cursor: pointer;
+    user-select: none;
+    border: 1px solid transparent;
+  }
+  .auto-pill.active {
+    color: var(--text);
+    background: rgba(255,255,255,0.16);
+    border-color: rgba(255,255,255,0.18);
+  }
+
+  /* turbo legend bar */
+  .legend-bar {
+    height: 8px;
+    border-radius: 999px;
+    background: linear-gradient(to right,
+      #30123b 0%,
+      #4145ab 12%,
+      #4675ed 24%,
+      #39a2fc 36%,
+      #1bcfd4 48%,
+      #24eca6 58%,
+      #61fc6c 66%,
+      #a4fc3b 73%,
+      #d1e834 78%,
+      #f3c63a 83%,
+      #fe9b2d 88%,
+      #f36315 93%,
+      #d23105 97%,
+      #7a0403 100%);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06);
+  }
+  .legend-ticks {
+    display: flex;
+    justify-content: space-between;
+    font-size: 9.5px;
+    color: var(--text-faint);
+    margin-top: 5px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---------- hover tooltip ---------- */
+  .tooltip {
+    position: absolute;
+    pointer-events: none;
+    z-index: 20;
+    background: rgba(0, 0, 0, 0.82);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    padding: 7px 10px;
+    font: 500 12px/1.25 -apple-system, system-ui, sans-serif;
+    white-space: nowrap;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+    transform: translate(12px, 12px);
+    opacity: 0;
+    transition: opacity 0.12s ease;
+  }
+  .tooltip.visible { opacity: 1; }
+  .tooltip .big { font-weight: 600; font-size: 13px; }
+  .tooltip .coord { color: var(--text-dim); font-size: 10.5px; margin-top: 2px; font-variant-numeric: tabular-nums; }
+
+  /* hide MapLibre default attribution clutter, keep small */
+  .maplibregl-ctrl-attrib {
+    background: rgba(0,0,0,0.4) !important;
+    font-size: 10px;
+  }
+  .maplibregl-ctrl-attrib a { color: rgba(255,255,255,0.6) !important; }
+  /* dark-theme the compass control */
+  .maplibregl-ctrl-group {
+    background: var(--pill-bg) !important;
+    border: 1px solid var(--pill-border) !important;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.45) !important;
+  }
+  .maplibregl-ctrl-group button {
+    background-color: transparent !important;
+  }
+  .maplibregl-ctrl-group button:hover {
+    background-color: rgba(255,255,255,0.08) !important;
+  }
+  .maplibregl-ctrl-compass .maplibregl-ctrl-icon {
+    filter: invert(1) brightness(1.2);
+  }
+
+  /* ==================== SCREEN TOGGLING ==================== */
+  .screen {
+    display: none;
+    position: absolute;
+    inset: 0;
+  }
+  .screen.active { display: block; }
+
+  /* nav pill (map -> story, story -> map) */
+  .nav-pill {
+    position: absolute;
+    top: 18px;
+    right: 18px;
+    z-index: 30;
+    background: var(--pill-bg);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--pill-border);
+    color: var(--text);
+    font: 500 13px/1 -apple-system, system-ui, sans-serif;
+    padding: 10px 18px;
+    border-radius: 999px;
+    cursor: pointer;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.45);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: background 0.18s ease, transform 0.18s ease;
+  }
+  .nav-pill:hover { background: rgba(255,255,255,0.14); }
+  .nav-pill:active { transform: scale(0.97); }
+  .nav-pill.light {
+    background: #fff;
+    border: 1px solid #e8dccb;
+    color: #5b2a16;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.08);
+  }
+  .nav-pill.light:hover { background: #faf3e6; }
+  .nav-arrow { font-size: 14px; opacity: 0.85; }
+
+  /* ==================== STORY SCREEN (light theme) ==================== */
+  #storyScreen {
+    background: #f4ead7;     /* warm cream */
+    color: #3a2a1e;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+  .story-container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 80px 32px 60px;
+    font-family: -apple-system, "SF Pro Text", BlinkMacSystemFont, system-ui, sans-serif;
+  }
+
+  /* hero */
+  .story-hero {
+    padding-bottom: 32px;
+    border-bottom: 1px solid rgba(58, 42, 30, 0.1);
+    margin-bottom: 32px;
+  }
+  .story-eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    color: #a06940;
+    margin-bottom: 14px;
+    font-weight: 600;
+  }
+  .story-hero h1 {
+    font: 800 56px/1.05 "SF Pro Display", -apple-system, system-ui, sans-serif;
+    margin: 0 0 18px 0;
+    color: #2c1810;
+    letter-spacing: -0.02em;
+  }
+  .story-lede {
+    font: 400 17px/1.55 -apple-system, system-ui, sans-serif;
+    color: #5b4534;
+    margin: 0;
+    max-width: 760px;
+  }
+
+  /* hero stats,two cards side by side */
+  .hero-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 36px;
+  }
+  .stat-card {
+    background: #fff;
+    border-radius: 14px;
+    padding: 22px 26px;
+    box-shadow: 0 2px 12px rgba(58, 42, 30, 0.06);
+    border: 1px solid rgba(58, 42, 30, 0.06);
+  }
+  .stat-eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    color: #94776a;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .stat-big {
+    font: 800 56px/1 "SF Pro Display", -apple-system, system-ui, sans-serif;
+    color: #c14a1a;
+    letter-spacing: -0.02em;
+    margin-bottom: 12px;
+  }
+  .stat-unit { font-size: 28px; margin-left: 2px; color: #c14a1a; }
+  .stat-caption { font-size: 13.5px; line-height: 1.45; color: #6b4f3c; }
+  .stat-card.homebody .stat-big { color: #8a3a14; }
+  .stat-card.homebody .stat-unit { color: #8a3a14; }
+
+  /* section labels */
+  .section-label {
+    font-size: 11.5px;
+    letter-spacing: 0.18em;
+    color: #94776a;
+    font-weight: 600;
+    margin: 0 0 12px 0;
+    text-transform: uppercase;
+  }
+  .section-sub {
+    font-size: 13.5px;
+    color: #7a5e4b;
+    margin: 0 0 18px 0;
+    line-height: 1.5;
+  }
+
+  .chart-block {
+    background: #fff;
+    border-radius: 14px;
+    padding: 22px 26px 26px;
+    margin-bottom: 24px;
+    box-shadow: 0 2px 12px rgba(58, 42, 30, 0.05);
+    border: 1px solid rgba(58, 42, 30, 0.06);
+  }
+
+  /* frequency breakdown rows */
+  .chart-freq { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
+  .freq-row { display: grid; grid-template-columns: 110px 1fr; align-items: center; gap: 12px; }
+  .freq-label {
+    font-size: 12.5px;
+    color: #5b4534;
+    line-height: 1.2;
+  }
+  .freq-label small { display: block; color: #94776a; font-size: 10.5px; }
+  .freq-label.core { color: #b34520; font-weight: 600; }
+  .freq-track {
+    height: 26px;
+    background: #efe2cb;
+    border-radius: 999px;
+    position: relative;
+    overflow: hidden;
+  }
+  .freq-fill {
+    height: 100%;
+    border-radius: 999px;
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    color: #fff;
+    font: 600 11.5px/1 -apple-system, system-ui, sans-serif;
+    white-space: nowrap;
+    transition: width 0.6s ease;
+  }
+
+  /* top 10 places vertical bars */
+  .chart-top10 svg { width: 100%; height: 320px; display: block; }
+  .chart-top10 .bar { transition: opacity 0.18s ease; }
+  .chart-top10 .bar:hover { opacity: 0.78; cursor: default; }
+  .chart-top10 .label {
+    font: 500 11px -apple-system, system-ui, sans-serif;
+    fill: #5b4534;
+  }
+  .chart-top10 .value {
+    font: 700 11.5px -apple-system, system-ui, sans-serif;
+    fill: #3a2a1e;
+  }
+  .chart-top10 .axis text { fill: #94776a; font-size: 10.5px; }
+  .chart-top10 .axis line, .chart-top10 .axis path { stroke: #d7c6ad; }
+
+  /* donut */
+  .chart-donut { display: flex; align-items: center; gap: 28px; flex-wrap: wrap; }
+  .chart-donut svg { flex-shrink: 0; }
+  .donut-legend { display: flex; flex-direction: column; gap: 8px; min-width: 220px; }
+  .donut-leg {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font: 500 13px/1.3 -apple-system, system-ui, sans-serif;
+    color: #3a2a1e;
+  }
+  .donut-leg .sw { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+  .donut-leg .v { color: #94776a; font-weight: 400; margin-left: auto; font-variant-numeric: tabular-nums; }
+
+  /* prose blocks */
+  .prose-block {
+    background: #fff;
+    border-radius: 14px;
+    padding: 26px 30px 28px;
+    margin-bottom: 24px;
+    box-shadow: 0 2px 12px rgba(58, 42, 30, 0.05);
+    border: 1px solid rgba(58, 42, 30, 0.06);
+  }
+  .prose-block h2 {
+    font: 700 22px/1.2 "SF Pro Display", -apple-system, system-ui, sans-serif;
+    margin: 0 0 14px 0;
+    color: #2c1810;
+  }
+  .prose-block h3 {
+    font: 700 14px/1.3 -apple-system, system-ui, sans-serif;
+    margin: 22px 0 8px 0;
+    color: #6b3a1e;
+  }
+  .prose-block p, .prose-block li {
+    font: 400 14px/1.6 -apple-system, system-ui, sans-serif;
+    color: #3a2a1e;
+  }
+  .prose-block ul {
+    padding-left: 20px;
+    margin: 0 0 8px 0;
+  }
+  .prose-block li { margin-bottom: 6px; }
+  .insights-list li { color: #3a2a1e; }
+  .insights-list li strong { color: #b34520; }
+  .decision-caveat {
+    background: #faf3e6;
+    border-left: 3px solid #c14a1a;
+    padding: 12px 16px;
+    border-radius: 4px;
+    margin-top: 18px !important;
+    font-size: 13px !important;
+    color: #5b4534 !important;
+  }
+
+  /* tree (Predicting Me) */
+  .chart-tree {
+    margin-top: 8px;
+    overflow-x: auto;
+  }
+  .chart-tree svg {
+    display: block;
+    min-width: 100%;
+  }
+  .chart-tree .node circle {
+    fill: #fff;
+    stroke-width: 2;
+  }
+  .chart-tree .node text {
+    font: 500 12px -apple-system, system-ui, sans-serif;
+    fill: #3a2a1e;
+  }
+  .chart-tree .link {
+    fill: none;
+    stroke: #d7c6ad;
+    stroke-width: 1.5;
+  }
+
+  /* footer actions */
+  .story-footer {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    margin: 36px 0 20px;
+    flex-wrap: wrap;
+  }
+  .action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 22px;
+    border-radius: 999px;
+    background: #fff;
+    border: 1px solid #e0cfb6;
+    color: #5b2a16;
+    font: 600 14px/1 -apple-system, system-ui, sans-serif;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background 0.18s ease, transform 0.18s ease;
+    box-shadow: 0 2px 10px rgba(58, 42, 30, 0.06);
+  }
+  .action-btn:hover { background: #faf3e6; }
+  .action-btn:active { transform: scale(0.97); }
+  .action-btn.primary {
+    background: #c14a1a;
+    border-color: #c14a1a;
+    color: #fff;
+  }
+  .action-btn.primary:hover { background: #a83d12; }
+  .story-credit {
+    text-align: center;
+    font-size: 11px;
+    color: #94776a;
+    margin-top: 10px;
+    letter-spacing: 0.02em;
+  }
+
+  /* loading splash */
+  #loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-dim);
+    font-size: 13px;
+    z-index: 30;
+    pointer-events: none;
+    background: var(--bg);
+  }
+  #loading.hidden { opacity: 0; transition: opacity 0.4s ease; }
+</style>
+</head>
+<body>
+
+<!-- ============== SCREEN 1: THE MAP (default) ============== -->
+<div id="mapScreen" class="screen active">
+<div id="map"></div>
+<div id="loading">loading bump data…</div>
+
+<!-- nav pill: go to Story screen -->
+<button class="nav-pill nav-to-story" id="toStoryBtn">
+  Read the Story <span class="nav-arrow">→</span>
+</button>
+
+<!-- Legacy persona bar (kept hidden so existing JS bindings still work; new
+     persona controls live inside the left category panel below). -->
+<div class="persona-bar" id="personaBar">
+  <button class="persona-btn" data-persona="home"><span class="p-icon">🏡</span> Home Me</button>
+  <button class="persona-btn" data-persona="adventure"><span class="p-icon">🌿</span> Adventure Me</button>
+  <button class="persona-btn" data-persona="traveler"><span class="p-icon">✈️</span> Traveler Me</button>
+  <button class="persona-btn" data-persona="student"><span class="p-icon">🎓</span> Student Me</button>
+  <button class="persona-btn reset" data-persona="all" title="Show all places"><span class="p-icon">⊕</span> All</button>
+</div>
+
+<!-- ============== LEFT CATEGORY PANEL (primary filter) ============== -->
+<aside class="cat-panel" id="catPanel">
+  <div class="cat-head">
+    <div class="cat-title">My Places</div>
+    <span class="cat-beta">BETA</span>
+  </div>
+  <div class="cat-sub" id="catSub">Bump scratch map · 87 places · 8 categories</div>
+
+  <div class="cat-section">
+    <span>Category</span>
+    <span class="cat-section-action" id="catSectionAction">All on</span>
+  </div>
+  <ul class="cat-list" id="catList"><!-- populated by JS --></ul>
+
+  <div class="cat-section"><span>Size (logs)</span></div>
+  <div class="size-legend">
+    <div class="size-rings" aria-hidden="true">
+      <div class="ring" style="width:48px;height:48px;"></div>
+      <div class="ring" style="width:34px;height:34px;"></div>
+      <div class="ring" style="width:22px;height:22px;"></div>
+      <div class="ring" style="width:12px;height:12px;"></div>
+    </div>
+    <div class="size-labels">
+      200<br/>100<br/>50<br/>20<br/>5
+    </div>
+  </div>
+
+  <div class="cat-section">
+    <span>Persona view</span>
+    <span class="cat-section-action" id="personaReset">Reset</span>
+  </div>
+  <div class="persona-mini-list" id="personaMiniList">
+    <button class="persona-mini" data-persona="home"><span class="pm-icon">🏡</span> Home Me</button>
+    <button class="persona-mini" data-persona="adventure"><span class="pm-icon">🌿</span> Adventure</button>
+    <button class="persona-mini" data-persona="traveler"><span class="pm-icon">✈️</span> Traveler</button>
+    <button class="persona-mini" data-persona="student"><span class="pm-icon">🎓</span> Student</button>
+  </div>
+</aside>
+
+<!-- ============== BOTTOM VIEW-MODE TOOLBAR ============== -->
+<div class="view-toolbar" id="viewToolbar">
+  <span class="vt-label-sub">Layers</span>
+  <button class="vt-btn active" data-mode="points" title="Show place bubbles">
+    <span class="vt-icon">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="12" cy="12" r="5" fill="currentColor" opacity="0.95"/>
+        <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.4" opacity="0.4"/>
+      </svg>
+    </span>
+    Points
+  </button>
+  <button class="vt-btn active" data-mode="heatmap" title="Show flat heatmap of where you've been">
+    <span class="vt-icon">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <polygon points="12,3 20,7.5 20,16.5 12,21 4,16.5 4,7.5" fill="currentColor" opacity="0.85"/>
+        <polygon points="12,8 16,10.2 16,14.8 12,17 8,14.8 8,10.2" fill="#0a0a0d" opacity="0.6"/>
+      </svg>
+    </span>
+    Heatmap
+  </button>
+  <button class="vt-btn active" data-mode="towers" title="Show 3D towers for tagged places">
+    <span class="vt-icon">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="4"  y="13" width="4" height="8" rx="0.6" fill="currentColor" opacity="0.7"/>
+        <rect x="10" y="7"  width="4" height="14" rx="0.6" fill="currentColor"/>
+        <rect x="16" y="10" width="4" height="11" rx="0.6" fill="currentColor" opacity="0.85"/>
+      </svg>
+    </span>
+    3D Towers
+  </button>
+</div>
+
+<div class="story-card" id="storyCard" aria-hidden="true">
+  <button class="story-close" id="storyClose" aria-label="Close">×</button>
+  <div class="story-icon-wrap"><div class="story-icon" id="storyIcon">🏡</div></div>
+  <h2 class="story-title" id="storyTitle">Home Me</h2>
+  <div class="story-tagline" id="storyTagline"></div>
+  <p class="story-body" id="storyBody"></p>
+  <div class="story-places-label">KEY PLACES</div>
+  <div class="story-places" id="storyPlaces"></div>
+  <div class="story-missing" id="storyMissing"></div>
+</div>
+
+<div class="info-card">
+  <div class="info-head">
+    <div class="info-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 3 L21 9 L21 17 L12 23 L3 17 L3 9 Z" stroke="#fff" stroke-width="1.6" stroke-linejoin="round" fill="rgba(255,255,255,0.12)"/>
+        <path d="M12 3 L12 13 M12 13 L21 9 M12 13 L3 9" stroke="#fff" stroke-width="1.4" stroke-linejoin="round" opacity="0.85"/>
+      </svg>
+    </div>
+    <div style="flex:1; min-width:0;">
+      <div class="info-title">Bump scratch map</div>
+      <div class="info-sub">iPhone export 2026-05-24</div>
+    </div>
+    <button id="orbitBtn" class="orbit-btn" title="Auto-rotate 360°" aria-label="Auto-rotate">
+      <svg class="orbit-icon-play" viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M5 3.5 L13 8 L5 12.5 Z" fill="currentColor"/>
+      </svg>
+      <svg class="orbit-icon-pause" viewBox="0 0 16 16" aria-hidden="true">
+        <rect x="4.5" y="3.5" width="2.5" height="9" rx="0.6" fill="currentColor"/>
+        <rect x="9" y="3.5" width="2.5" height="9" rx="0.6" fill="currentColor"/>
+      </svg>
+    </button>
+  </div>
+
+  <div class="control-row">
+    <div class="control-label">Bucket size</div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span class="auto-pill active" id="autoPill">auto</span>
+      <input id="resSlider" type="range" min="5" max="10" step="1" value="10" />
+    </div>
+    <div class="control-value" id="resLabel">res 10 · ~65 m</div>
+  </div>
+
+  <div class="control-row" style="grid-template-columns: 88px 1fr 64px;">
+    <div class="control-label">Logs per bucket</div>
+    <div>
+      <div class="legend-bar"></div>
+      <div class="legend-ticks">
+        <span id="legendMin">1</span>
+        <span id="legendMax">190</span>
+      </div>
+    </div>
+    <div></div>
+  </div>
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+</div><!-- /#mapScreen -->
+
+<!-- ============== SCREEN 2: THE STORY ============== -->
+<div id="storyScreen" class="screen">
+  <button class="nav-pill nav-to-map light" id="toMapBtn">
+    <span class="nav-arrow">←</span> Back to Map
+  </button>
+
+  <div class="story-container">
+
+    <!-- HERO -->
+    <header class="story-hero">
+      <div class="story-eyebrow">A DATA STORY · DATA 201 FINAL · 2026</div>
+      <h1>The Four Mes</h1>
+      <p class="story-lede">
+        Most days I move in a triangle smaller than 2 km,home, the cafe I work above, the dance studio.
+        Then sometimes I escape: to a mountain road, to Bangkok, to Budapest. My phone has been logging
+        where I go for months without ever asking me to think about it. This is what it looks like
+        when you read your own GPS like a diary.
+      </p>
+    </header>
+
+    <!-- HERO STATS -->
+    <section class="hero-stats">
+      <div class="stat-card explorer">
+        <div class="stat-eyebrow">THE EXPLORER</div>
+        <div class="stat-big"><span id="statExplorerPct">--</span><span class="stat-unit">%</span></div>
+        <div class="stat-caption">of places visited exactly once,new cafes, streets, parks, detours</div>
+      </div>
+      <div class="stat-card homebody">
+        <div class="stat-eyebrow">THE HOMEBODY</div>
+        <div class="stat-big"><span id="statHomebody">--</span></div>
+        <div class="stat-caption">hexes with 50+ logs,my true daily territory, centered on Punna, Choei &amp; Northlab</div>
+      </div>
+    </section>
+
+    <!-- CHART 1: VISIT FREQUENCY BREAKDOWN -->
+    <section class="chart-block">
+      <h2 class="section-label">VISIT FREQUENCY BREAKDOWN</h2>
+      <div id="chartFreq" class="chart-freq"></div>
+    </section>
+
+    <!-- CHART 2: LOGS BY PERSONA -->
+    <section class="chart-block">
+      <h2 class="section-label">LOGS BY PERSONA</h2>
+      <p class="section-sub">Adding up logs across each persona's key places. Home Me dominates by an order of magnitude.</p>
+      <div id="chartDonut" class="chart-donut"></div>
+    </section>
+
+    <!-- KEY INSIGHTS -->
+    <section class="prose-block">
+      <h2>🔍 Key Insights</h2>
+      <ul class="insights-list" id="insightsList">
+        <!-- filled by JS so the numbers match the embedded data -->
+      </ul>
+    </section>
+
+    <!-- PREDICTING ME -->
+    <section class="prose-block">
+      <h2>🎯 Predicting Me</h2>
+      <p class="section-sub">
+        Bump strips timestamps, so this map can't tell you <em>when</em> I'm anywhere. But I can.
+        Below is the behavioural decision tree my data hints at,confirmed by self-knowledge.
+        It's a decision-making aid, not a prediction model: small dataset, no labels, no validation.
+      </p>
+      <div id="chartTree" class="chart-tree"></div>
+      <p class="decision-caveat">
+        <strong>Limitations:</strong> This tree reflects my <em>typical</em> week.
+        It collapses when I travel, when assignments stack up before deadlines (like today),
+        or when friends are visiting. It also fails entirely on the ~20% of days that are
+        statistically irregular,Bump can't see those because it doesn't see time.
+      </p>
+    </section>
+
+    <!-- ETHICS -->
+    <section class="prose-block ethics">
+      <h2>⚖️ Ethics &amp; Responsibility</h2>
+
+      <h3>🔒 Privacy Statement</h3>
+      <p>
+        This dashboard contains <strong>my own</strong> location data, knowingly published by me, the data subject.
+        It identifies my home (Punna Residence 5) and primary workplace (Choei) at building precision.
+        I'm comfortable with this trade-off because (a) I'm both the subject and the publisher, and
+        (b) the academic value of the project is worth the disclosure to me.
+        <strong>Do not replicate this approach with someone else's data.</strong>
+        The dataset contains no third-party names, no contacts, no timestamps, and no biometric data.
+      </p>
+
+      <h3>⚠️ Bias &amp; Limitation Disclosure</h3>
+      <ul>
+        <li><strong>No timestamps.</strong> Bump strips them,no time-of-day, no day-of-week, no recency. Every pattern claim here is spatial, not temporal.</li>
+        <li><strong>"Log" ≠ "visit."</strong> A log is a GPS ping inside a ~65 m hex. Driving past a restaurant counts as a log. Don't read the counts as "times I went there."</li>
+        <li><strong>GPS noise.</strong> Phone GPS has ~5–15 m error indoors and near tall buildings,pings can land in the neighbouring hex.</li>
+        <li><strong>Indoor under-counting.</strong> Bump logs less reliably indoors, so cafes I sit in for hours may look like a single ping; streets I walk get more.</li>
+        <li><strong>Geographic scope.</strong> Only Thailand. Budapest is in the story but invisible on the map.</li>
+        <li><strong>Tag selection bias.</strong> 87 places are tagged out of thousands visited. I tagged what I cared to remember,survivorship bias.</li>
+        <li><strong>Persona self-categorisation.</strong> I assigned places to personas based on self-knowledge, not a clustering algorithm. Subjective.</li>
+      </ul>
+
+      <h3>📊 Visualization Justification</h3>
+      <ul>
+        <li><strong>3D hex extrusion.</strong> Height encodes log count so you feel intensity. Hexagons (H3 grid) avoid the uneven cell sizes you'd get from squares projected at this latitude.</li>
+        <li><strong>Turbo colormap on a log scale.</strong> Linear color would crush the 3,000 low-count hexes into one dim band; log brings out the texture without overstating differences.</li>
+        <li><strong>Scratch trail vs. towers.</strong> Two visual languages so "I've been here" (pink flat) and "this place matters to me" (3D tower) don't get conflated.</li>
+        <li><strong>Dimming non-key towers per persona.</strong> Keeps the dimmed towers visible at low alpha so persona view stays geographically honest,I'm not hiding data.</li>
+        <li><strong>Risks of misreading.</strong> Tall column ≠ "I love this place." Could just mean it's on my route. The Delhi Street Indian Restaurant in the dataset has 78 logs and I've only eaten there once.</li>
+      </ul>
+
+      <h3>🎯 Responsible Decision</h3>
+      <p>
+        Based on the data, the honest decision I can make is:
+        <em>"My geography is 80% habit. If I want a wider life, I have to plan for the other 20%."</em>
+        The data doesn't tell me <strong>whether</strong> that's good (habit is also home, work, friendships), only that it's <strong>true</strong>.
+      </p>
+      <p>
+        <strong>What I won't claim:</strong> that I should go out more (the data has no happiness variable),
+        that any tower is a "favorite place" (it might just be on a route),
+        or that Adventure Me is "underdeveloped" (one weekend in the mountains could shift the count dramatically,small dataset).
+      </p>
+    </section>
+
+    <!-- FOOTER ACTIONS -->
+    <section class="story-footer">
+      <a class="action-btn primary" href="report.pdf" download="May-Bump-Report.pdf" target="_blank">
+        ⬇ Download full report (PDF)
+      </a>
+      <button class="action-btn" id="footerBackBtn">← Back to Map</button>
+    </section>
+
+    <p class="story-credit">
+      Bump iPhone export · 2026-05-24 · 3,221 hexes · 87 tagged places ·
+      Built with deck.gl + MapLibre + D3.js by May, Chiang Mai
+    </p>
+  </div><!-- /.story-container -->
+</div><!-- /#storyScreen -->
+
+<!-- inline tagged places: array of {n: name, lat, lng} -->
+<script id="places-data" type="application/json">[{"n":"Bonchon (The Mall Lifestore Ngamwongwan)","lat":13.855816841125488,"lng":100.54230499267578},{"n":"Bulunburi Pai Resort","lat":19.379535675048828,"lng":98.44207763671875},{"n":"Chiang Mai Ram Hospital","lat":18.794937133789062,"lng":98.97765350341797},{"n":"Rich Mellow","lat":18.797086715698242,"lng":98.9662857055664},{"n":"Chiang Mai Sauna Ice Bath Eudemonia","lat":18.736690521240234,"lng":98.90095520019531},{"n":"ต้นสนคาเฟ่","lat":18.809349060058594,"lng":98.9581298828125},{"n":"Snooze Massage CNX สนูซนวดเพื่อสุขภาพเชียงใหม่","lat":18.805965423583984,"lng":98.95843505859375},{"n":"ข้าวขาหมู แม่เพ็ญ by. Jirapar","lat":18.801973342895508,"lng":98.98260498046875},{"n":"Go Inn Silom BTS St Louis / Surawak","lat":13.722622871398926,"lng":100.5240478515625},{"n":"The Coco Club","lat":18.80909538269043,"lng":98.96603393554688},{"n":"Premier Lounge - Central Festival Chiang Mai","lat":18.809167861938477,"lng":99.01814270019531},{"n":"Lung Pud Pa Peng Coffee House","lat":18.86507225036621,"lng":99.35003662109375},{"n":"I LOVE COFFEE ศูนย์อาหาร CMU","lat":18.79950714111328,"lng":98.95161437988281},{"n":"หอพระแก้ว วัดผาลาด","lat":18.79931640625,"lng":98.93415832519531},{"n":"Firefly Factory","lat":18.802045822143555,"lng":98.98432159423828},{"n":"Joy elephant","lat":18.63265023041606,"lng":98.63292985701992},{"n":"Choei","lat":18.779054641723633,"lng":98.99971008300781},{"n":"MAYA","lat":18.802383422851562,"lng":98.96727752685547},{"n":"Wikunpanich Salapo","lat":18.786941528320312,"lng":99.00804901123047},{"n":"bays coffee co.","lat":18.80604362487793,"lng":98.96145629882812},{"n":"Child’s Dream Foundation","lat":18.77178192138672,"lng":98.97864532470703},{"n":"Chiang Mai International Airport","lat":18.768997192382812,"lng":98.96812438964844},{"n":"AKA Yakiniku Central Chiangmai","lat":18.807296752929688,"lng":99.01773834228516},{"n":"บ้านชา ลาเปา","lat":18.80771827697754,"lng":98.96959686279297},{"n":"Myst","lat":18.802202224731445,"lng":98.9668960571289},{"n":"Marisa Resort & Spa Chiang Dao","lat":19.448150634765625,"lng":98.97560119628906},{"n":"Healthy Junk","lat":18.798765182495117,"lng":98.96755981445312},{"n":"Praise Cafe","lat":18.78713035583496,"lng":99.0071792602539},{"n":"Egyptian Kings Restaurant","lat":18.78337860107422,"lng":99.00334930419922},{"n":"Pai Siam Bar and Bistro","lat":19.358882904052734,"lng":98.44473266601562},{"n":"Much Room Cafe","lat":18.761716842651367,"lng":98.98917388916016},{"n":"Finn Crêpe Chiang Mai","lat":18.80755615234375,"lng":98.95658111572266},{"n":"Lounge by Warm Up Café","lat":18.795167922973633,"lng":98.96532440185547},{"n":"Site of 2024 Chiang Mai Flower Festival","lat":18.833786010742188,"lng":98.96617889404297},{"n":"ขนมปลาทองบุงปัง","lat":18.788240432739258,"lng":98.98645782470703},{"n":"Chiang Mai Immigration Office","lat":18.771251678466797,"lng":98.97129821777344},{"n":"Rotniyom","lat":18.764291763305664,"lng":98.93669128417969},{"n":"ทุเรียนทอดเชียงใหม่ (ถนนคนเดินท่าแพ)","lat":18.788349151611328,"lng":98.98793029785156},{"n":"แวะเต๊อะ ม่อนผาโค้ง","lat":18.895299911499023,"lng":98.8389663696289},{"n":"Suvarnabhumi Airport","lat":13.690913200378418,"lng":100.75421142578125},{"n":"The Old City Spa","lat":18.789533615112305,"lng":98.98395538330078},{"n":"Wailai","lat":18.866750717163086,"lng":99.35438537597656},{"n":"ฐิดาพร","lat":18.805707931518555,"lng":98.9596176147461},{"n":"Sinners and Saints Cafe and Pool Bar","lat":18.779518127441406,"lng":98.99790954589844},{"n":"The Mellowship Jazz Club","lat":18.805688858032227,"lng":98.9600601196289},{"n":"Dream Cafe","lat":19.349931716918945,"lng":98.45067596435547},{"n":"กินหมูกระทะ สาขาเชียงใหม่","lat":18.79994773864746,"lng":98.99147033691406},{"n":"Northlab Dance Studio","lat":18.798320770263672,"lng":99.02396392822266},{"n":"CNX Pole","lat":18.785079956054688,"lng":98.99976348876953},{"n":"Beast Burger","lat":18.795066833496094,"lng":98.96765899658203},{"n":"Red Panda Cafè (CNX) | ร้านกาแฟแพนด้าแดง (หน้ามช.)","lat":18.808917999267578,"lng":98.95381164550781},{"n":"หม่าล่ากวนอู","lat":13.854206085205078,"lng":100.53861999511719},{"n":"ปังเจริญ","lat":18.793033599853516,"lng":98.9971694946289},{"n":"Jai Pang Cafe","lat":19.36286163330078,"lng":98.4398422241211},{"n":"Nong Bee’s Burmese Restaurant and the Best Friend Library","lat":18.796579360961914,"lng":98.96590423583984},{"n":"อาวน์ชา","lat":18.671558380126953,"lng":98.88774108886719},{"n":"Fohhide","lat":18.798686981201172,"lng":98.96870422363281},{"n":"Cloud Coffee","lat":18.803028106689453,"lng":98.95923614501953},{"n":"Boat Chaingmai","lat":18.807090759277344,"lng":98.95687103271484},{"n":"Doi Suthep-Pui National Park","lat":18.851451873779297,"lng":98.87420654296875},{"n":"Lanna Meditation Sanctuary","lat":18.911693572998047,"lng":99.01325225830078},{"n":"The ‘90s","lat":18.797727584838867,"lng":98.9675521850586},{"n":"เขากอดโฮมสเตย์","lat":18.88379669189453,"lng":98.85020446777344},{"n":"Chomnok Chommai","lat":18.865812301635742,"lng":99.3554916381836},{"n":"Embassy Of The Union Of Myanmar","lat":13.720802307128906,"lng":100.52564239501953},{"n":"Pai coffee Studio","lat":19.35795783996582,"lng":98.44827270507812},{"n":"Feel Garden Chiang Mai","lat":18.806665420532227,"lng":98.95772552490234},{"n":"ร้านตามใจสั่ง","lat":18.7988338470459,"lng":98.975341796875},{"n":"ครัวตะหลิวทอง","lat":18.663288116455078,"lng":98.91942596435547},{"n":"ร้านอาหาร Chiangdao Good View restaurant&cafe","lat":19.42986488342285,"lng":98.9819107055664},{"n":"WEALTH POOL VILLA CHIANG MAI","lat":18.806047439575195,"lng":99.03707885742188},{"n":"Flaneur Tea","lat":13.720785140991211,"lng":100.52404022216797},{"n":"สุกี้โคคา","lat":18.808698654174805,"lng":98.9565200805664},{"n":"Delhi Street Indian Restaurant","lat":18.804071466704034,"lng":98.96311392072235},{"n":"TATA Chiang Dao Cafe, Restaurant, and Farm","lat":19.36888885498047,"lng":98.94463348388672},{"n":"Winstons Pool and Sports Club","lat":18.797245025634766,"lng":98.97592163085938},{"n":"שירותים ציבוריים","lat":19.30826759338379,"lng":98.47499084472656},{"n":"Royal Flora Ratchaphruek Park","lat":18.751102447509766,"lng":98.9229507446289},{"n":"MmD.Cafe","lat":13.721248626708984,"lng":100.52423858642578},{"n":"ข้าวราดแกงสุโขทัย","lat":18.824804306030273,"lng":99.00745391845703},{"n":"Little Village","lat":18.67729377746582,"lng":98.88720703125},{"n":"Punna Residence 5","lat":18.8055477142334,"lng":98.95845794677734},{"n":"Joy Elephant sanctuary ","lat":18.63067754589689,"lng":98.63378488089575},{"n":"Dreamscape","lat":19.318437576293945,"lng":98.45281219482422},{"n":"zoe in yellow pub","lat":18.790864944458008,"lng":98.9906005859375},{"n":"Faculty of Communication Arts Chulalongkorn University","lat":13.73583984375,"lng":100.52862548828125},{"n":"","lat":18.805538070197237,"lng":98.95852660672249}]</script>
+
+<!-- inline data: array of {h: h3 cell id, v: visit count} at H3 resolution 10 -->
+<script id="bump-data" type="application/json">[{"h":"08a64820826c7fff","v":1},{"h":"08a6482082cdffff","v":1},{"h":"08a6482082d9ffff","v":1},{"h":"08a64820b2ba7fff","v":1},{"h":"08a64820b341ffff","v":1},{"h":"08a64820b6587fff","v":1},{"h":"08a648211a057fff","v":1},{"h":"08a648211a077fff","v":1},{"h":"08a648211a0c7fff","v":2},{"h":"08a648211a0dffff","v":2},{"h":"08a648211a0effff","v":1},{"h":"08a648211a147fff","v":1},{"h":"08a648211a15ffff","v":1},{"h":"08a648211a407fff","v":1},{"h":"08a648211a40ffff","v":1},{"h":"08a648211a417fff","v":1},{"h":"08a648211a41ffff","v":1},{"h":"08a648211a42ffff","v":1},{"h":"08a648211a437fff","v":1},{"h":"08a648211a447fff","v":2},{"h":"08a648211a44ffff","v":1},{"h":"08a648211a457fff","v":2},{"h":"08a648211a46ffff","v":1},{"h":"08a648211a477fff","v":1},{"h":"08a648211a4a7fff","v":1},{"h":"08a648211a4effff","v":1},{"h":"08a648211a58ffff","v":1},{"h":"08a648211a59ffff","v":1},{"h":"08a648211a707fff","v":1},{"h":"08a648211a727fff","v":1},{"h":"08a648211a72ffff","v":2},{"h":"08a648211a737fff","v":2},{"h":"08a648211ad07fff","v":1},{"h":"08a648211ad27fff","v":1},{"h":"08a648211ad2ffff","v":1},{"h":"08a648211ad37fff","v":2},{"h":"08a648211e68ffff","v":1},{"h":"08a648211e69ffff","v":1},{"h":"08a648211e6dffff","v":1},{"h":"08a6482124007fff","v":1},{"h":"08a648212401ffff","v":1},{"h":"08a6482124037fff","v":1},{"h":"08a64821240e7fff","v":1},{"h":"08a6482124107fff","v":1},{"h":"08a648212411ffff","v":1},{"h":"08a6482124127fff","v":1},{"h":"08a648212488ffff","v":1},{"h":"08a64821248a7fff","v":1},{"h":"08a64821248affff","v":1},{"h":"08a6482124987fff","v":1},{"h":"08a648212498ffff","v":1},{"h":"08a64821249a7fff","v":1},{"h":"08a64821269b7fff","v":1},{"h":"08a6482130d0ffff","v":1},{"h":"08a6482130d27fff","v":1},{"h":"08a6482130d2ffff","v":1},{"h":"08a6482130d77fff","v":1},{"h":"08a6482134487fff","v":1},{"h":"08a648213448ffff","v":1},{"h":"08a6482134497fff","v":1},{"h":"08a648213449ffff","v":1},{"h":"08a64821344a7fff","v":1},{"h":"08a64821344b7fff","v":1},{"h":"08a64821344d7fff","v":1},{"h":"08a64821344dffff","v":1},{"h":"08a6482134587fff","v":1},{"h":"08a648213458ffff","v":1},{"h":"08a648213459ffff","v":1},{"h":"08a64821345b7fff","v":1},{"h":"08a6482134697fff","v":1},{"h":"08a648213469ffff","v":1},{"h":"08a6482136027fff","v":9},{"h":"08a6482136037fff","v":10},{"h":"08a6482136117fff","v":10},{"h":"08a6482136127fff","v":9},{"h":"08a648213612ffff","v":8},{"h":"08a6482136137fff","v":11},{"h":"08a6482136157fff","v":9},{"h":"08a6482136167fff","v":9},{"h":"08a6482136177fff","v":9},{"h":"08a64821361affff","v":10},{"h":"08a648213650ffff","v":1},{"h":"08a6482136517fff","v":1},{"h":"08a648213651ffff","v":1},{"h":"08a6482136537fff","v":1},{"h":"08a6482136577fff","v":1},{"h":"08a6482136807fff","v":1},{"h":"08a6482136817fff","v":1},{"h":"08a6482136827fff","v":1},{"h":"08a648213682ffff","v":1},{"h":"08a6482136887fff","v":2},{"h":"08a648213688ffff","v":1},{"h":"08a648213689ffff","v":1},{"h":"08a64821368affff","v":2},{"h":"08a64821368b7fff","v":2},{"h":"08a64821368c7fff","v":1},{"h":"08a64821368cffff","v":8},{"h":"08a64821368dffff","v":9},{"h":"08a64821368f7fff","v":1},{"h":"08a648213690ffff","v":1},{"h":"08a648213692ffff","v":1},{"h":"08a6482136a47fff","v":1},{"h":"08a6482136a67fff","v":1},{"h":"08a6482136a6ffff","v":1},{"h":"08a6482136a77fff","v":1},{"h":"08a6482136b27fff","v":1},{"h":"08a6482136b47fff","v":1},{"h":"08a6482136b5ffff","v":1},{"h":"08a6482136b77fff","v":1},{"h":"08a6482136c07fff","v":13},{"h":"08a6482136c0ffff","v":19},{"h":"08a6482136c17fff","v":6},{"h":"08a6482136c1ffff","v":2},{"h":"08a6482136c27fff","v":94},{"h":"08a6482136c2ffff","v":26},{"h":"08a6482136c37fff","v":4},{"h":"08a6482136c47fff","v":11},{"h":"08a6482136c4ffff","v":2},{"h":"08a6482136c57fff","v":15},{"h":"08a6482136c67fff","v":2},{"h":"08a6482136c6ffff","v":11},{"h":"08a6482136c77fff","v":1},{"h":"08a6482136c87fff","v":2},{"h":"08a6482136c97fff","v":2},{"h":"08a6482136c9ffff","v":1},{"h":"08a6482136ca7fff","v":4},{"h":"08a6482136caffff","v":1},{"h":"08a6482136cb7fff","v":2},{"h":"08a6482136ccffff","v":1},{"h":"08a6482136cdffff","v":1},{"h":"08a6482136ce7fff","v":3},{"h":"08a6482136ceffff","v":4},{"h":"08a6482136d07fff","v":105},{"h":"08a6482136d0ffff","v":190},{"h":"08a6482136d17fff","v":25},{"h":"08a6482136d1ffff","v":87},{"h":"08a6482136d27fff","v":10},{"h":"08a6482136d2ffff","v":42},{"h":"08a6482136d37fff","v":81},{"h":"08a6482136d4ffff","v":2},{"h":"08a6482136d57fff","v":1},{"h":"08a6482136d77fff","v":10},{"h":"08a6482136d87fff","v":1},{"h":"08a6482136d8ffff","v":1},{"h":"08a6482136d97fff","v":1},{"h":"08a6482136d9ffff","v":3},{"h":"08a6482136da7fff","v":5},{"h":"08a6482136daffff","v":1},{"h":"08a6482136db7fff","v":6},{"h":"08a6482190037fff","v":1},{"h":"08a6482190097fff","v":1},{"h":"08a64821900a7fff","v":1},{"h":"08a64821900b7fff","v":1},{"h":"08a648219011ffff","v":1},{"h":"08a648219018ffff","v":2},{"h":"08a64821904effff","v":1},{"h":"08a6482190867fff","v":1},{"h":"08a648219094ffff","v":1},{"h":"08a648219268ffff","v":1},{"h":"08a648219272ffff","v":1},{"h":"08a6482192b8ffff","v":1},{"h":"08a64821954b7fff","v":1},{"h":"08a6482195517fff","v":1},{"h":"08a6482195537fff","v":2},{"h":"08a6482195587fff","v":1},{"h":"08a648219559ffff","v":1},{"h":"08a64821955affff","v":1},{"h":"08a6482195c9ffff","v":1},{"h":"08a64821a0437fff","v":1},{"h":"08a64821a0487fff","v":2},{"h":"08a64821a048ffff","v":1},{"h":"08a64821a049ffff","v":1},{"h":"08a64821a04a7fff","v":1},{"h":"08a64821a04c7fff","v":1},{"h":"08a64821a04effff","v":1},{"h":"08a64821a04f7fff","v":1},{"h":"08a64821a0507fff","v":1},{"h":"08a64821a051ffff","v":1},{"h":"08a64821a0527fff","v":1},{"h":"08a64821a058ffff","v":1},{"h":"08a64821a0597fff","v":1},{"h":"08a64821a05b7fff","v":1},{"h":"08a64821a0657fff","v":1},{"h":"08a64821a0677fff","v":1},{"h":"08a64821a06c7fff","v":1},{"h":"08a64821a06dffff","v":1},{"h":"08a64821a06effff","v":1},{"h":"08a64821a075ffff","v":1},{"h":"08a64821a07b7fff","v":1},{"h":"08a64821a0887fff","v":1},{"h":"08a64821a0897fff","v":1},{"h":"08a64821a090ffff","v":1},{"h":"08a64821a091ffff","v":1},{"h":"08a64821a0987fff","v":1},{"h":"08a64821a099ffff","v":1},{"h":"08a64821a09affff","v":1},{"h":"08a64821a0c47fff","v":1},{"h":"08a64821a0c57fff","v":1},{"h":"08a64821a0c6ffff","v":1},{"h":"08a64821a0cc7fff","v":1},{"h":"08a64821a0cd7fff","v":1},{"h":"08a64821a0ce7fff","v":1},{"h":"08a64821a0d47fff","v":1},{"h":"08a64821a0d57fff","v":1},{"h":"08a64821a0d6ffff","v":1},{"h":"08a64821a0d97fff","v":1},{"h":"08a64821a0db7fff","v":1},{"h":"08a64821a16a7fff","v":1},{"h":"08a64821a2017fff","v":2},{"h":"08a64821a2027fff","v":2},{"h":"08a64821a2037fff","v":2},{"h":"08a64821a2097fff","v":1},{"h":"08a64821a20a7fff","v":2},{"h":"08a64821a20b7fff","v":2},{"h":"08a64821a210ffff","v":1},{"h":"08a64821a2157fff","v":1},{"h":"08a64821a2167fff","v":2},{"h":"08a64821a2177fff","v":2},{"h":"08a64821a2457fff","v":1},{"h":"08a64821a2467fff","v":1},{"h":"08a64821a2477fff","v":1},{"h":"08a64821a24c7fff","v":1},{"h":"08a64821a24d7fff","v":1},{"h":"08a64821a24e7fff","v":1},{"h":"08a64821a2847fff","v":1},{"h":"08a64821a285ffff","v":3},{"h":"08a64821a2867fff","v":1},{"h":"08a64821a28cffff","v":2},{"h":"08a64821a294ffff","v":1},{"h":"08a64821a296ffff","v":1},{"h":"08a64821a2a17fff","v":1},{"h":"08a64821a2a1ffff","v":1},{"h":"08a64821a2a37fff","v":1},{"h":"08a64821a2aa7fff","v":1},{"h":"08a64821a2aaffff","v":1},{"h":"08a64821a2af7fff","v":1},{"h":"08a64821a2b07fff","v":1},{"h":"08a64821a2b1ffff","v":1},{"h":"08a64821a2b37fff","v":1},{"h":"08a64821a2b87fff","v":1},{"h":"08a64821a2b8ffff","v":1},{"h":"08a64821a2bb7fff","v":2},{"h":"08a64821a3817fff","v":1},{"h":"08a64821a381ffff","v":1},{"h":"08a64821a38a7fff","v":1},{"h":"08a64821a399ffff","v":1},{"h":"08a64821a3d67fff","v":1},{"h":"08a64821a3d6ffff","v":1},{"h":"08a64821a4087fff","v":1},{"h":"08a64821a409ffff","v":1},{"h":"08a64821a4127fff","v":1},{"h":"08a64821a4137fff","v":1},{"h":"08a64821a4167fff","v":1},{"h":"08a64821a416ffff","v":1},{"h":"08a64821a4697fff","v":1},{"h":"08a64821a46b7fff","v":2},{"h":"08a64821a4717fff","v":1},{"h":"08a64821a4737fff","v":1},{"h":"08a64821a4787fff","v":1},{"h":"08a64821a479ffff","v":1},{"h":"08a64821a47a7fff","v":1},{"h":"08a64821a4887fff","v":3},{"h":"08a64821a488ffff","v":1},{"h":"08a64821a489ffff","v":1},{"h":"08a64821a48a7fff","v":2},{"h":"08a64821a48d7fff","v":1},{"h":"08a64821a48dffff","v":1},{"h":"08a64821a4917fff","v":2},{"h":"08a64821a4937fff","v":2},{"h":"08a64821a498ffff","v":2},{"h":"08a64821a49affff","v":2},{"h":"08a64821a4a87fff","v":1},{"h":"08a64821a4ab7fff","v":1},{"h":"08a64821a6247fff","v":1},{"h":"08a64821a625ffff","v":1},{"h":"08a64821a6267fff","v":2},{"h":"08a64821a634ffff","v":2},{"h":"08a64821a636ffff","v":1},{"h":"08a64821a6a47fff","v":1},{"h":"08a64821a6a5ffff","v":1},{"h":"08a64821a6a67fff","v":1},{"h":"08a64821a9927fff","v":1},{"h":"08a64821a992ffff","v":1},{"h":"08a64821a9977fff","v":1},{"h":"08a64821ac0c7fff","v":1},{"h":"08a64821ac0effff","v":1},{"h":"08a64821ac0f7fff","v":1},{"h":"08a64821ac207fff","v":1},{"h":"08a64821ac237fff","v":1},{"h":"08a64821ac387fff","v":1},{"h":"08a64821ac38ffff","v":1},{"h":"08a64821ac3b7fff","v":1},{"h":"08a64821ac59ffff","v":1},{"h":"08a64821ad29ffff","v":1},{"h":"08a64821ad42ffff","v":1},{"h":"08a64821ad447fff","v":1},{"h":"08a64821ad44ffff","v":1},{"h":"08a64821ad467fff","v":1},{"h":"08a64821ad477fff","v":1},{"h":"08a64821ad667fff","v":1},{"h":"08a64821ad66ffff","v":1},{"h":"08a64821ad707fff","v":1},{"h":"08a64821ad70ffff","v":1},{"h":"08a64821ad737fff","v":1},{"h":"08a64821ad757fff","v":1},{"h":"08a64821ad75ffff","v":1},{"h":"08a64821ada6ffff","v":2},{"h":"08a64821b100ffff","v":1},{"h":"08a64821b1057fff","v":1},{"h":"08a64821b1067fff","v":1},{"h":"08a64821b1077fff","v":2},{"h":"08a64821b10c7fff","v":3},{"h":"08a64821b10d7fff","v":2},{"h":"08a64821b10dffff","v":1},{"h":"08a64821b10e7fff","v":2},{"h":"08a64821b114ffff","v":2},{"h":"08a64821b115ffff","v":1},{"h":"08a64821b116ffff","v":1},{"h":"08a64821b1637fff","v":2},{"h":"08a64821b16a7fff","v":1},{"h":"08a64821b16b7fff","v":2},{"h":"08a64821b1707fff","v":1},{"h":"08a64821b170ffff","v":2},{"h":"08a64821b171ffff","v":2},{"h":"08a64821b172ffff","v":3},{"h":"08a64821b178ffff","v":2},{"h":"08a64821b179ffff","v":1},{"h":"08a64821b1ab7fff","v":1},{"h":"08a64821b1b07fff","v":1},{"h":"08a64821b1b1ffff","v":1},{"h":"08a64821b1b2ffff","v":2},{"h":"08a64821b1b8ffff","v":1},{"h":"08a64821b1b9ffff","v":2},{"h":"08a64821b1baffff","v":1},{"h":"08a64821b3237fff","v":1},{"h":"08a64821b3297fff","v":1},{"h":"08a64821b32a7fff","v":1},{"h":"08a64821b32b7fff","v":1},{"h":"08a64821b331ffff","v":1},{"h":"08a64821b338ffff","v":1},{"h":"08a64821b3a67fff","v":1},{"h":"08a64821b3a77fff","v":1},{"h":"08a64821b3b4ffff","v":1},{"h":"08a6482401647fff","v":1},{"h":"08a648240ec67fff","v":1},{"h":"08a64824182e7fff","v":1},{"h":"08a64824199affff","v":1},{"h":"08a6482419c97fff","v":1},{"h":"08a648241b69ffff","v":1},{"h":"08a648241b6d7fff","v":1},{"h":"08a648241b6dffff","v":1},{"h":"08a648241b887fff","v":1},{"h":"08a648241b89ffff","v":1},{"h":"08a648241b8a7fff","v":1},{"h":"08a648241d237fff","v":1},{"h":"08a648241da77fff","v":1},{"h":"08a648242abb7fff","v":1},{"h":"08a648242c297fff","v":1},{"h":"08a648242c36ffff","v":1},{"h":"08a6482488017fff","v":1},{"h":"08a648248801ffff","v":1},{"h":"08a648248805ffff","v":2},{"h":"08a64824880affff","v":1},{"h":"08a64824880c7fff","v":1},{"h":"08a64824880cffff","v":1},{"h":"08a64824880f7fff","v":1},{"h":"08a648248818ffff","v":1},{"h":"08a6482488387fff","v":1},{"h":"08a6482488397fff","v":2},{"h":"08a64824883affff","v":1},{"h":"08a64824883b7fff","v":2},{"h":"08a6482489587fff","v":1},{"h":"08a6482489d07fff","v":1},{"h":"08a648248b037fff","v":1},{"h":"08a648248b10ffff","v":1},{"h":"08a648248b11ffff","v":1},{"h":"08a648248b12ffff","v":1},{"h":"08a648248b947fff","v":1},{"h":"08a648248b95ffff","v":1},{"h":"08a648248b967fff","v":1},{"h":"08a648248d087fff","v":1},{"h":"08a648248d0b7fff","v":1},{"h":"08a648248d41ffff","v":1},{"h":"08a648248d5affff","v":1},{"h":"08a648248daf7fff","v":1},{"h":"08a64824f026ffff","v":1},{"h":"08a64824f0927fff","v":1},{"h":"08a64824f0937fff","v":1},{"h":"08a64824f0a67fff","v":1},{"h":"08a64824f0a6ffff","v":1},{"h":"08a64824f0b2ffff","v":1},{"h":"08a64824f0b47fff","v":1},{"h":"08a64824f0b4ffff","v":1},{"h":"08a64824f0b77fff","v":1},{"h":"08a64824f0d27fff","v":1},{"h":"08a64824f1537fff","v":1},{"h":"08a64824f1c17fff","v":1},{"h":"08a64824f1c37fff","v":1},{"h":"08a64824f1c87fff","v":1},{"h":"08a64824f1c97fff","v":1},{"h":"08a64824f1c9ffff","v":1},{"h":"08a64824f1ca7fff","v":1},{"h":"08a64824f1cb7fff","v":1},{"h":"08a64824f1d17fff","v":1},{"h":"08a64824f1d37fff","v":1},{"h":"08a64824f1d8ffff","v":1},{"h":"08a64824f1daffff","v":1},{"h":"08a64824f4247fff","v":1},{"h":"08a64824f424ffff","v":2},{"h":"08a64824f4257fff","v":1},{"h":"08a64824f426ffff","v":2},{"h":"08a64824f42c7fff","v":1},{"h":"08a64824f42d7fff","v":1},{"h":"08a64824f42effff","v":1},{"h":"08a64824f464ffff","v":1},{"h":"08a64824f465ffff","v":2},{"h":"08a64824f46c7fff","v":2},{"h":"08a64824f46d7fff","v":2},{"h":"08a64824f46effff","v":2},{"h":"08a64824f4a4ffff","v":1},{"h":"08a64824f5417fff","v":1},{"h":"08a64824f5437fff","v":1},{"h":"08a64824f548ffff","v":1},{"h":"08a64824f54a7fff","v":1},{"h":"08a64824f54affff","v":1},{"h":"08a64824f54d7fff","v":1},{"h":"08a64824f5517fff","v":1},{"h":"08a64824f558ffff","v":1},{"h":"08a64824f55a7fff","v":1},{"h":"08a64824f55affff","v":1},{"h":"08a64824f55b7fff","v":1},{"h":"08a64824f5c97fff","v":1},{"h":"08a64824f5cb7fff","v":1},{"h":"08a64824f5d27fff","v":1},{"h":"08a64824f5d2ffff","v":1},{"h":"08a64824f5d47fff","v":1},{"h":"08a64824f5d77fff","v":1},{"h":"08a64824f5d87fff","v":1},{"h":"08a64824f5d9ffff","v":1},{"h":"08a64824f5da7fff","v":1},{"h":"08a64824f6327fff","v":1},{"h":"08a6482540617fff","v":1},{"h":"08a6482540687fff","v":1},{"h":"08a648254069ffff","v":1},{"h":"08a64825406affff","v":1},{"h":"08a6482541db7fff","v":1},{"h":"08a6482542257fff","v":1},{"h":"08a6482542267fff","v":1},{"h":"08a6482542277fff","v":1},{"h":"08a64825422c7fff","v":1},{"h":"08a64825422d7fff","v":1},{"h":"08a64825422dffff","v":1},{"h":"08a64825422e7fff","v":1},{"h":"08a648254234ffff","v":1},{"h":"08a6482545207fff","v":1},{"h":"08a6482545217fff","v":1},{"h":"08a6482545227fff","v":1},{"h":"08a64825452affff","v":1},{"h":"08a648254530ffff","v":1},{"h":"08a6482545377fff","v":1},{"h":"08a6482545a47fff","v":1},{"h":"08a6482545a57fff","v":1},{"h":"08a6482545a67fff","v":1},{"h":"08a6482545acffff","v":2},{"h":"08a6482545adffff","v":1},{"h":"08a6482545aeffff","v":1},{"h":"08a64825532effff","v":1},{"h":"08a648255c507fff","v":1},{"h":"08a648255c51ffff","v":1},{"h":"08a648255c907fff","v":1},{"h":"08a648255c927fff","v":1},{"h":"08a648255e897fff","v":1},{"h":"08a648256b8dffff","v":1},{"h":"08a648256c497fff","v":1},{"h":"08a648256c4b7fff","v":1},{"h":"08a648256c58ffff","v":1},{"h":"08a648256c59ffff","v":2},{"h":"08a648256c5affff","v":1},{"h":"08a648256cc87fff","v":1},{"h":"08a648256e00ffff","v":1},{"h":"08a648256e02ffff","v":1},{"h":"08a648256e0e7fff","v":1},{"h":"08a648256e147fff","v":1},{"h":"08a648256e157fff","v":1},{"h":"08a648256e167fff","v":2},{"h":"08a648256e847fff","v":1},{"h":"08a648256e857fff","v":1},{"h":"08a648256e867fff","v":1},{"h":"08a648256e8cffff","v":1},{"h":"08a648256e8effff","v":1},{"h":"08a6482608247fff","v":1},{"h":"08a648260824ffff","v":1},{"h":"08a648260825ffff","v":1},{"h":"08a648260826ffff","v":1},{"h":"08a6482609287fff","v":1},{"h":"08a6482609297fff","v":1},{"h":"08a64826092a7fff","v":1},{"h":"08a6482609597fff","v":1},{"h":"08a64826095b7fff","v":1},{"h":"08a6482609807fff","v":2},{"h":"08a648260980ffff","v":1},{"h":"08a648260981ffff","v":1},{"h":"08a6482609827fff","v":1},{"h":"08a6482609837fff","v":1},{"h":"08a6482609857fff","v":1},{"h":"08a648260985ffff","v":1},{"h":"08a648260990ffff","v":1},{"h":"08a6482609917fff","v":1},{"h":"08a648260992ffff","v":1},{"h":"08a6482609937fff","v":1},{"h":"08a64826099affff","v":1},{"h":"08a6482609aa7fff","v":1},{"h":"08a6482609b87fff","v":1},{"h":"08a6482609b9ffff","v":1},{"h":"08a6482609bb7fff","v":1},{"h":"08a6482609c07fff","v":1},{"h":"08a6482609c17fff","v":1},{"h":"08a6482609c27fff","v":1},{"h":"08a6482609c2ffff","v":1},{"h":"08a6482609c37fff","v":1},{"h":"08a6482609c87fff","v":1},{"h":"08a6482609c97fff","v":1},{"h":"08a6482609ca7fff","v":1},{"h":"08a6482609d5ffff","v":1},{"h":"08a648260b007fff","v":1},{"h":"08a648260b017fff","v":2},{"h":"08a648260b027fff","v":1},{"h":"08a648260b037fff","v":1},{"h":"08a648260b087fff","v":2},{"h":"08a648260b09ffff","v":2},{"h":"08a648260b0affff","v":2},{"h":"08a648260b0b7fff","v":1},{"h":"08a648260b10ffff","v":1},{"h":"08a648260b11ffff","v":1},{"h":"08a648260b12ffff","v":1},{"h":"08a648260b157fff","v":1},{"h":"08a648260b177fff","v":1},{"h":"08a648260b42ffff","v":1},{"h":"08a648260b447fff","v":1},{"h":"08a648260b44ffff","v":1},{"h":"08a648260b46ffff","v":1},{"h":"08a648260b477fff","v":1},{"h":"08a648260b617fff","v":2},{"h":"08a648260b687fff","v":2},{"h":"08a648260b68ffff","v":3},{"h":"08a648260b69ffff","v":3},{"h":"08a648260b6a7fff","v":2},{"h":"08a648260b6affff","v":3},{"h":"08a648260b6d7fff","v":1},{"h":"08a648260b6dffff","v":1},{"h":"08a648260b6f7fff","v":1},{"h":"08a648260b717fff","v":3},{"h":"08a648260b727fff","v":1},{"h":"08a648260b737fff","v":2},{"h":"08a648260b787fff","v":2},{"h":"08a648260b78ffff","v":3},{"h":"08a648260b7a7fff","v":2},{"h":"08a648260b7affff","v":3},{"h":"08a648260b80ffff","v":2},{"h":"08a648260b82ffff","v":1},{"h":"08a648260b8c7fff","v":1},{"h":"08a648260b8d7fff","v":1},{"h":"08a648260b8dffff","v":1},{"h":"08a648260b8e7fff","v":2},{"h":"08a648260b8f7fff","v":1},{"h":"08a648260b947fff","v":1},{"h":"08a648260b95ffff","v":1},{"h":"08a648260b967fff","v":1},{"h":"08a648260c347fff","v":1},{"h":"08a648260c34ffff","v":1},{"h":"08a648260c367fff","v":1},{"h":"08a648260c36ffff","v":1},{"h":"08a648260d207fff","v":2},{"h":"08a648260d20ffff","v":1},{"h":"08a648260d217fff","v":1},{"h":"08a648260d21ffff","v":2},{"h":"08a648260d247fff","v":1},{"h":"08a648260d24ffff","v":1},{"h":"08a648260d257fff","v":1},{"h":"08a648260d28ffff","v":1},{"h":"08a648260d29ffff","v":1},{"h":"08a648260d2affff","v":1},{"h":"08a648260d2d7fff","v":1},{"h":"08a648260d2f7fff","v":1},{"h":"08a648260d527fff","v":1},{"h":"08a648260d547fff","v":1},{"h":"08a648260d78ffff","v":1},{"h":"08a648260d8c7fff","v":1},{"h":"08a648260dc97fff","v":1},{"h":"08a648260dc9ffff","v":1},{"h":"08a648260dcd7fff","v":1},{"h":"08a648260dcdffff","v":1},{"h":"08a648262612ffff","v":1},{"h":"08a648262b117fff","v":1},{"h":"08a6482656417fff","v":2},{"h":"08a64826564a7fff","v":1},{"h":"08a648265689ffff","v":1},{"h":"08a64826e0107fff","v":1},{"h":"08a64826e0117fff","v":2},{"h":"08a64826e0127fff","v":4},{"h":"08a64826e012ffff","v":3},{"h":"08a64826e0137fff","v":2},{"h":"08a64826e01a7fff","v":2},{"h":"08a64826e01b7fff","v":1},{"h":"08a64826e0427fff","v":2},{"h":"08a64826e0437fff","v":2},{"h":"08a64826e04a7fff","v":1},{"h":"08a64826e04b7fff","v":1},{"h":"08a64826e050ffff","v":2},{"h":"08a64826e051ffff","v":2},{"h":"08a64826e052ffff","v":2},{"h":"08a64826e0577fff","v":1},{"h":"08a64826e058ffff","v":2},{"h":"08a64826e059ffff","v":1},{"h":"08a64826e05affff","v":1},{"h":"08a64826e0807fff","v":1},{"h":"08a64826e0817fff","v":1},{"h":"08a64826e0837fff","v":3},{"h":"08a64826e0847fff","v":2},{"h":"08a64826e084ffff","v":1},{"h":"08a64826e0857fff","v":2},{"h":"08a64826e085ffff","v":1},{"h":"08a64826e086ffff","v":3},{"h":"08a64826e0887fff","v":1},{"h":"08a64826e088ffff","v":2},{"h":"08a64826e08a7fff","v":1},{"h":"08a64826e08affff","v":1},{"h":"08a64826e08c7fff","v":3},{"h":"08a64826e08d7fff","v":5},{"h":"08a64826e08dffff","v":2},{"h":"08a64826e08effff","v":3},{"h":"08a64826e08f7fff","v":1},{"h":"08a64826e0907fff","v":3},{"h":"08a64826e091ffff","v":3},{"h":"08a64826e0927fff","v":3},{"h":"08a64826e098ffff","v":1},{"h":"08a64826e0c07fff","v":1},{"h":"08a64826e0c27fff","v":1},{"h":"08a64826e0c2ffff","v":1},{"h":"08a64826e0c4ffff","v":1},{"h":"08a64826e0c57fff","v":1},{"h":"08a64826e0c5ffff","v":2},{"h":"08a64826e0c77fff","v":1},{"h":"08a64826e0ccffff","v":1},{"h":"08a64826e0cdffff","v":2},{"h":"08a64826e0ceffff","v":1},{"h":"08a64826e4207fff","v":2},{"h":"08a64826e4217fff","v":3},{"h":"08a64826e4227fff","v":3},{"h":"08a64826e4237fff","v":1},{"h":"08a64826e428ffff","v":3},{"h":"08a64826e42affff","v":3},{"h":"08a64826e430ffff","v":3},{"h":"08a64826e431ffff","v":1},{"h":"08a64826e432ffff","v":1},{"h":"08a64826e4357fff","v":1},{"h":"08a64826e4367fff","v":1},{"h":"08a64826e4377fff","v":2},{"h":"08a64826e4a47fff","v":2},{"h":"08a64826e4a4ffff","v":2},{"h":"08a64826e4a5ffff","v":3},{"h":"08a64826e4a6ffff","v":2},{"h":"08a64826e4ac7fff","v":1},{"h":"08a64826e4acffff","v":2},{"h":"08a64826e4adffff","v":3},{"h":"08a64826e4aeffff","v":3},{"h":"08a64826e5127fff","v":1},{"h":"08a64826e5407fff","v":2},{"h":"08a64826e5417fff","v":1},{"h":"08a64826e541ffff","v":1},{"h":"08a64826e5427fff","v":1},{"h":"08a64826e542ffff","v":1},{"h":"08a64826e5487fff","v":2},{"h":"08a64826e548ffff","v":1},{"h":"08a64826e5497fff","v":1},{"h":"08a64826e549ffff","v":2},{"h":"08a64826e54affff","v":3},{"h":"08a64826e5557fff","v":2},{"h":"08a64826e5567fff","v":1},{"h":"08a64826e5577fff","v":3},{"h":"08a64826e5887fff","v":1},{"h":"08a64826e588ffff","v":1},{"h":"08a64826e5897fff","v":1},{"h":"08a64826e589ffff","v":1},{"h":"08a64826e58d7fff","v":2},{"h":"08a64826e5c0ffff","v":1},{"h":"08a64826e5c27fff","v":1},{"h":"08a64826e5c2ffff","v":1},{"h":"08a64826e5c47fff","v":1},{"h":"08a64826e5c57fff","v":2},{"h":"08a64826e5c5ffff","v":1},{"h":"08a64826e5c67fff","v":2},{"h":"08a64826e5c6ffff","v":1},{"h":"08a64826e5c77fff","v":2},{"h":"08a64826e5cc7fff","v":1},{"h":"08a64826e5ccffff","v":3},{"h":"08a64826e5cdffff","v":2},{"h":"08a64826e5ce7fff","v":1},{"h":"08a64826e5ceffff","v":3},{"h":"08a64826e5d0ffff","v":1},{"h":"08a64826e5d17fff","v":1},{"h":"08a64826e5d1ffff","v":1},{"h":"08a64826e5d27fff","v":1},{"h":"08a64826e5d2ffff","v":1},{"h":"08a64826e5d37fff","v":1},{"h":"08a64826e5d47fff","v":2},{"h":"08a64826e5d4ffff","v":1},{"h":"08a64826e5d5ffff","v":1},{"h":"08a64826e5d77fff","v":2},{"h":"08a64826e5d97fff","v":1},{"h":"08a64826e5da7fff","v":1},{"h":"08a64826e5db7fff","v":1},{"h":"08a6482700d97fff","v":1},{"h":"08a6482702837fff","v":1},{"h":"08a6482702c67fff","v":1},{"h":"08a648270459ffff","v":1},{"h":"08a6482706267fff","v":1},{"h":"08a648270634ffff","v":1},{"h":"08a648270636ffff","v":1},{"h":"08a6482706a07fff","v":1},{"h":"08a6482706a1ffff","v":1},{"h":"08a6482706a37fff","v":1},{"h":"08a6482706acffff","v":1},{"h":"08a6482706ae7fff","v":1},{"h":"08a6482706aeffff","v":1},{"h":"08a6482706b17fff","v":1},{"h":"08a6482706b1ffff","v":1},{"h":"08a648271ccc7fff","v":1},{"h":"08a64827248affff","v":1},{"h":"08a6482882017fff","v":1},{"h":"08a6482882037fff","v":1},{"h":"08a6482882087fff","v":1},{"h":"08a6482882097fff","v":1},{"h":"08a648288209ffff","v":1},{"h":"08a64828820a7fff","v":1},{"h":"08a64828820affff","v":1},{"h":"08a6482882107fff","v":1},{"h":"08a648288211ffff","v":1},{"h":"08a6482882127fff","v":1},{"h":"08a648288218ffff","v":1},{"h":"08a64828821affff","v":1},{"h":"08a648288244ffff","v":1},{"h":"08a648288246ffff","v":1},{"h":"08a6482882627fff","v":1},{"h":"08a648288262ffff","v":1},{"h":"08a6482882647fff","v":1},{"h":"08a648288264ffff","v":1},{"h":"08a6482882677fff","v":1},{"h":"08a64828826b7fff","v":1},{"h":"08a6482882717fff","v":1},{"h":"08a648288271ffff","v":1},{"h":"08a6482882787fff","v":1},{"h":"08a648288279ffff","v":1},{"h":"08a64828827a7fff","v":1},{"h":"08a64828827b7fff","v":1},{"h":"08a648288288ffff","v":1},{"h":"08a64828828affff","v":1},{"h":"08a6482888687fff","v":1},{"h":"08a648288868ffff","v":1},{"h":"08a64828886b7fff","v":1},{"h":"08a64828886c7fff","v":1},{"h":"08a64828886cffff","v":1},{"h":"08a64828886f7fff","v":1},{"h":"08a6482888827fff","v":1},{"h":"08a6482888837fff","v":1},{"h":"08a648288890ffff","v":1},{"h":"08a648288891ffff","v":1},{"h":"08a6482888977fff","v":1},{"h":"08a648288898ffff","v":1},{"h":"08a648288899ffff","v":1},{"h":"08a64828889affff","v":1},{"h":"08a6482888d0ffff","v":1},{"h":"08a6482888d1ffff","v":1},{"h":"08a6482888d47fff","v":1},{"h":"08a6482888d6ffff","v":1},{"h":"08a6482888d77fff","v":1},{"h":"08a6482888d87fff","v":1},{"h":"08a6482888d97fff","v":1},{"h":"08a6482888daffff","v":1},{"h":"08a64828895b7fff","v":1},{"h":"08a6482889997fff","v":1},{"h":"08a64828899b7fff","v":1},{"h":"08a6482889b67fff","v":1},{"h":"08a6482889c77fff","v":1},{"h":"08a6482889d47fff","v":1},{"h":"08a6482889d5ffff","v":1},{"h":"08a6482889d6ffff","v":1},{"h":"08a648288a407fff","v":1},{"h":"08a648288a42ffff","v":1},{"h":"08a648288a437fff","v":1},{"h":"08a648288a477fff","v":1},{"h":"08a648288a50ffff","v":2},{"h":"08a648288a517fff","v":1},{"h":"08a648288a51ffff","v":2},{"h":"08a648288a52ffff","v":2},{"h":"08a648288a65ffff","v":1},{"h":"08a648288a887fff","v":1},{"h":"08a648288a897fff","v":1},{"h":"08a648288ab47fff","v":1},{"h":"08a648288ac47fff","v":2},{"h":"08a648288ac57fff","v":2},{"h":"08a648288ac6ffff","v":1},{"h":"08a648288acc7fff","v":2},{"h":"08a648288acd7fff","v":1},{"h":"08a648288acdffff","v":2},{"h":"08a648288aceffff","v":2},{"h":"08a648288b907fff","v":1},{"h":"08a648288b917fff","v":1},{"h":"08a648288b92ffff","v":1},{"h":"08a648288b9a7fff","v":1},{"h":"08a648288b9b7fff","v":1},{"h":"08a648288c24ffff","v":1},{"h":"08a648288c25ffff","v":1},{"h":"08a648288c26ffff","v":1},{"h":"08a648288c2cffff","v":1},{"h":"08a648288c2dffff","v":1},{"h":"08a648288c2effff","v":1},{"h":"08a648288d537fff","v":1},{"h":"08a648288d5b7fff","v":1},{"h":"08a648288d807fff","v":1},{"h":"08a648288d817fff","v":1},{"h":"08a648288d827fff","v":1},{"h":"08a648288d887fff","v":1},{"h":"08a648288d897fff","v":1},{"h":"08a648288d8a7fff","v":1},{"h":"08a648288d907fff","v":1},{"h":"08a648288d90ffff","v":1},{"h":"08a648288d92ffff","v":1},{"h":"08a648288d937fff","v":1},{"h":"08a648288dc0ffff","v":1},{"h":"08a648288dc1ffff","v":1},{"h":"08a648288dc2ffff","v":1},{"h":"08a648288dc67fff","v":1},{"h":"08a648288dc77fff","v":1},{"h":"08a648288dc8ffff","v":1},{"h":"08a648288dc9ffff","v":1},{"h":"08a648288dce7fff","v":1},{"h":"08a648288dcf7fff","v":1},{"h":"08a648288dd57fff","v":1},{"h":"08a648288dd5ffff","v":1},{"h":"08a648288dd77fff","v":1},{"h":"08a648288e30ffff","v":1},{"h":"08a648288e31ffff","v":1},{"h":"08a648288e367fff","v":1},{"h":"08a648288e377fff","v":1},{"h":"08a648288e387fff","v":1},{"h":"08a648288e397fff","v":1},{"h":"08a648288e3affff","v":1},{"h":"08a648288e70ffff","v":1},{"h":"08a648288e71ffff","v":1},{"h":"08a648288e767fff","v":1},{"h":"08a648288e777fff","v":1},{"h":"08a648288e78ffff","v":1},{"h":"08a648288e79ffff","v":1},{"h":"08a648288e7affff","v":1},{"h":"08a648289104ffff","v":1},{"h":"08a648289105ffff","v":1},{"h":"08a648289106ffff","v":1},{"h":"08a64828910cffff","v":1},{"h":"08a64828910dffff","v":1},{"h":"08a648289120ffff","v":1},{"h":"08a648289122ffff","v":1},{"h":"08a64828912d7fff","v":1},{"h":"08a64828912e7fff","v":1},{"h":"08a64828912f7fff","v":1},{"h":"08a6482891357fff","v":1},{"h":"08a6482891367fff","v":1},{"h":"08a6482891377fff","v":1},{"h":"08a64828913b7fff","v":1},{"h":"08a648289170ffff","v":1},{"h":"08a6482891777fff","v":1},{"h":"08a6482891a47fff","v":1},{"h":"08a6482891a57fff","v":1},{"h":"08a6482891a67fff","v":1},{"h":"08a6482891a8ffff","v":1},{"h":"08a6482891a9ffff","v":1},{"h":"08a6482891acffff","v":1},{"h":"08a6482891aeffff","v":1},{"h":"08a6482891b4ffff","v":1},{"h":"08a64828921affff","v":1},{"h":"08a6482892367fff","v":1},{"h":"08a648289236ffff","v":1},{"h":"08a648289240ffff","v":1},{"h":"08a648289242ffff","v":1},{"h":"08a64828924d7fff","v":1},{"h":"08a64828924e7fff","v":1},{"h":"08a64828924f7fff","v":1},{"h":"08a6482892547fff","v":1},{"h":"08a648289255ffff","v":1},{"h":"08a6482892577fff","v":1},{"h":"08a6482892c87fff","v":1},{"h":"08a6482892c8ffff","v":1},{"h":"08a6482892ca7fff","v":1},{"h":"08a6482892cd7fff","v":1},{"h":"08a6482892cdffff","v":1},{"h":"08a6482892d87fff","v":1},{"h":"08a6482892d9ffff","v":1},{"h":"08a6482892db7fff","v":1},{"h":"08a648289304ffff","v":1},{"h":"08a648289305ffff","v":2},{"h":"08a648289309ffff","v":1},{"h":"08a64828930c7fff","v":3},{"h":"08a64828930cffff","v":2},{"h":"08a64828930d7fff","v":2},{"h":"08a64828930dffff","v":2},{"h":"08a64828930e7fff","v":1},{"h":"08a64828930effff","v":2},{"h":"08a64828932c7fff","v":1},{"h":"08a64828932d7fff","v":1},{"h":"08a648289330ffff","v":1},{"h":"08a6482893317fff","v":1},{"h":"08a648289331ffff","v":1},{"h":"08a6482893327fff","v":1},{"h":"08a6482893337fff","v":1},{"h":"08a6482893347fff","v":1},{"h":"08a648289336ffff","v":1},{"h":"08a6482893377fff","v":1},{"h":"08a64828933a7fff","v":1},{"h":"08a64828933b7fff","v":1},{"h":"08a6482893407fff","v":1},{"h":"08a648289341ffff","v":2},{"h":"08a6482893427fff","v":1},{"h":"08a648289344ffff","v":2},{"h":"08a648289345ffff","v":1},{"h":"08a648289346ffff","v":1},{"h":"08a64828934c7fff","v":1},{"h":"08a64828934cffff","v":1},{"h":"08a64828934e7fff","v":2},{"h":"08a64828934effff","v":1},{"h":"08a6482893557fff","v":1},{"h":"08a6482893577fff","v":1},{"h":"08a6482893607fff","v":1},{"h":"08a648289360ffff","v":1},{"h":"08a648289361ffff","v":2},{"h":"08a648289362ffff","v":1},{"h":"08a6482893647fff","v":1},{"h":"08a648289364ffff","v":1},{"h":"08a648289366ffff","v":1},{"h":"08a6482893677fff","v":1},{"h":"08a6482893697fff","v":2},{"h":"08a64828936a7fff","v":1},{"h":"08a64828936affff","v":1},{"h":"08a64828936b7fff","v":3},{"h":"08a6482893707fff","v":1},{"h":"08a6482893727fff","v":2},{"h":"08a648289372ffff","v":1},{"h":"08a6482893737fff","v":2},{"h":"08a648289374ffff","v":1},{"h":"08a6482893757fff","v":1},{"h":"08a6482893767fff","v":2},{"h":"08a648289376ffff","v":1},{"h":"08a6482893777fff","v":1},{"h":"08a6482893787fff","v":2},{"h":"08a648289379ffff","v":2},{"h":"08a64828937a7fff","v":2},{"h":"08a6482893ad7fff","v":1},{"h":"08a6482893adffff","v":1},{"h":"08a6482893c1ffff","v":1},{"h":"08a6482893ca7fff","v":1},{"h":"08a6482893caffff","v":1},{"h":"08a6482893cc7fff","v":1},{"h":"08a6482893cdffff","v":1},{"h":"08a6482893ce7fff","v":1},{"h":"08a6482893d9ffff","v":1},{"h":"08a6482896487fff","v":1},{"h":"08a6482896497fff","v":1},{"h":"08a648289649ffff","v":1},{"h":"08a64828964b7fff","v":1},{"h":"08a6482896597fff","v":1},{"h":"08a6482898207fff","v":1},{"h":"08a648289820ffff","v":3},{"h":"08a648289821ffff","v":3},{"h":"08a648289822ffff","v":4},{"h":"08a6482898277fff","v":1},{"h":"08a648289828ffff","v":3},{"h":"08a64828982d7fff","v":2},{"h":"08a64828982e7fff","v":1},{"h":"08a64828982f7fff","v":3},{"h":"08a6482898347fff","v":4},{"h":"08a648289834ffff","v":2},{"h":"08a6482898357fff","v":1},{"h":"08a648289835ffff","v":4},{"h":"08a648289836ffff","v":3},{"h":"08a6482898807fff","v":1},{"h":"08a6482898827fff","v":1},{"h":"08a6482898837fff","v":1},{"h":"08a64828988a7fff","v":1},{"h":"08a64828988b7fff","v":1},{"h":"08a648289894ffff","v":1},{"h":"08a6482898957fff","v":1},{"h":"08a648289895ffff","v":1},{"h":"08a648289898ffff","v":1},{"h":"08a6482898c07fff","v":1},{"h":"08a6482898c17fff","v":1},{"h":"08a6482898c2ffff","v":1},{"h":"08a6482898ca7fff","v":1},{"h":"08a6482898cb7fff","v":1},{"h":"08a6482898d47fff","v":1},{"h":"08a6482898d4ffff","v":1},{"h":"08a6482898d57fff","v":1},{"h":"08a6482899087fff","v":1},{"h":"08a648289909ffff","v":1},{"h":"08a64828990a7fff","v":1},{"h":"08a64828990b7fff","v":1},{"h":"08a6482899187fff","v":1},{"h":"08a648289919ffff","v":1},{"h":"08a64828991a7fff","v":1},{"h":"08a6482899607fff","v":1},{"h":"08a6482899617fff","v":1},{"h":"08a648289961ffff","v":1},{"h":"08a6482899637fff","v":1},{"h":"08a6482899687fff","v":1},{"h":"08a648289968ffff","v":1},{"h":"08a6482899697fff","v":1},{"h":"08a648289969ffff","v":1},{"h":"08a64828996a7fff","v":1},{"h":"08a64828996affff","v":1},{"h":"08a64828996b7fff","v":1},{"h":"08a64828996cffff","v":1},{"h":"08a64828996e7fff","v":1},{"h":"08a64828996effff","v":1},{"h":"08a64828996f7fff","v":1},{"h":"08a6482899707fff","v":1},{"h":"08a648289971ffff","v":1},{"h":"08a6482899737fff","v":1},{"h":"08a648289978ffff","v":1},{"h":"08a648289979ffff","v":1},{"h":"08a64828997affff","v":1},{"h":"08a6482899c07fff","v":1},{"h":"08a6482899c0ffff","v":3},{"h":"08a6482899c17fff","v":3},{"h":"08a6482899c1ffff","v":3},{"h":"08a6482899c47fff","v":3},{"h":"08a6482899c57fff","v":2},{"h":"08a6482899c5ffff","v":1},{"h":"08a6482899c67fff","v":1},{"h":"08a6482899c6ffff","v":2},{"h":"08a6482899c77fff","v":2},{"h":"08a6482899c87fff","v":1},{"h":"08a6482899ca7fff","v":3},{"h":"08a6482899caffff","v":1},{"h":"08a6482899cb7fff","v":3},{"h":"08a6482899d47fff","v":1},{"h":"08a6482899d4ffff","v":1},{"h":"08a6482899d67fff","v":1},{"h":"08a6482899d9ffff","v":1},{"h":"08a648289a217fff","v":2},{"h":"08a648289a227fff","v":4},{"h":"08a648289a237fff","v":4},{"h":"08a648289a297fff","v":2},{"h":"08a648289a2a7fff","v":3},{"h":"08a648289a2b7fff","v":3},{"h":"08a648289a30ffff","v":1},{"h":"08a648289a31ffff","v":2},{"h":"08a648289a347fff","v":3},{"h":"08a648289a357fff","v":3},{"h":"08a648289a36ffff","v":3},{"h":"08a648289a38ffff","v":3},{"h":"08a648289a39ffff","v":1},{"h":"08a648289a497fff","v":1},{"h":"08a648289a4b7fff","v":1},{"h":"08a648289a507fff","v":1},{"h":"08a648289a517fff","v":1},{"h":"08a648289a527fff","v":2},{"h":"08a648289a587fff","v":1},{"h":"08a648289a59ffff","v":1},{"h":"08a648289a5affff","v":1},{"h":"08a648289a607fff","v":4},{"h":"08a648289a60ffff","v":3},{"h":"08a648289a617fff","v":4},{"h":"08a648289a61ffff","v":1},{"h":"08a648289a62ffff","v":2},{"h":"08a648289a667fff","v":3},{"h":"08a648289a677fff","v":4},{"h":"08a648289a6a7fff","v":2},{"h":"08a648289a6b7fff","v":1},{"h":"08a648289a74ffff","v":2},{"h":"08a648289a75ffff","v":1},{"h":"08a648289a76ffff","v":1},{"h":"08a648289a78ffff","v":2},{"h":"08a648289a797fff","v":1},{"h":"08a648289a79ffff","v":4},{"h":"08a648289ac07fff","v":3},{"h":"08a648289ac17fff","v":2},{"h":"08a648289ac1ffff","v":1},{"h":"08a648289ac27fff","v":2},{"h":"08a648289ac2ffff","v":1},{"h":"08a648289ac37fff","v":1},{"h":"08a648289ac87fff","v":3},{"h":"08a648289ac8ffff","v":2},{"h":"08a648289ac97fff","v":2},{"h":"08a648289ac9ffff","v":1},{"h":"08a648289aca7fff","v":1},{"h":"08a648289acaffff","v":3},{"h":"08a648289acb7fff","v":2},{"h":"08a648289ad0ffff","v":1},{"h":"08a648289ad47fff","v":1},{"h":"08a648289ad57fff","v":2},{"h":"08a648289ad77fff","v":1},{"h":"08a648289b187fff","v":1},{"h":"08a648289b18ffff","v":1},{"h":"08a648289b197fff","v":1},{"h":"08a648289b19ffff","v":1},{"h":"08a648289b1b7fff","v":1},{"h":"08a648289b567fff","v":1},{"h":"08a648289b907fff","v":1},{"h":"08a648289b917fff","v":2},{"h":"08a648289b927fff","v":3},{"h":"08a648289b937fff","v":3},{"h":"08a648289b987fff","v":2},{"h":"08a648289b997fff","v":2},{"h":"08a648289b9a7fff","v":1},{"h":"08a648289b9affff","v":2},{"h":"08a648289bb6ffff","v":1},{"h":"08a648289bc07fff","v":1},{"h":"08a648289bc17fff","v":1},{"h":"08a648289bc1ffff","v":1},{"h":"08a648289bc27fff","v":2},{"h":"08a648289bc37fff","v":2},{"h":"08a648289bca7fff","v":1},{"h":"08a648289bcc7fff","v":1},{"h":"08a648289bccffff","v":1},{"h":"08a648289bcdffff","v":1},{"h":"08a648289bce7fff","v":1},{"h":"08a648289bd47fff","v":2},{"h":"08a648289bd57fff","v":2},{"h":"08a648289bd67fff","v":2},{"h":"08a648289bd8ffff","v":4},{"h":"08a648289bd9ffff","v":3},{"h":"08a648289c867fff","v":1},{"h":"08a648289c86ffff","v":1},{"h":"08a648289c907fff","v":1},{"h":"08a648289c90ffff","v":1},{"h":"08a648289c937fff","v":1},{"h":"08a648289c957fff","v":1},{"h":"08a648289c95ffff","v":1},{"h":"08a648289ca47fff","v":1},{"h":"08a648289ca4ffff","v":1},{"h":"08a648289ca67fff","v":1},{"h":"08a648289cb07fff","v":1},{"h":"08a648289cb0ffff","v":1},{"h":"08a648289cb37fff","v":1},{"h":"08a648289cb57fff","v":1},{"h":"08a648289cb5ffff","v":1},{"h":"08a648289d027fff","v":3},{"h":"08a648289d037fff","v":2},{"h":"08a648289d047fff","v":1},{"h":"08a648289d04ffff","v":2},{"h":"08a648289d11ffff","v":1},{"h":"08a648289d147fff","v":1},{"h":"08a648289d157fff","v":1},{"h":"08a648289d16ffff","v":1},{"h":"08a648289d18ffff","v":2},{"h":"08a648289d19ffff","v":1},{"h":"08a648289d227fff","v":1},{"h":"08a648289d22ffff","v":1},{"h":"08a648289d247fff","v":1},{"h":"08a648289d24ffff","v":1},{"h":"08a648289d277fff","v":1},{"h":"08a648289d317fff","v":1},{"h":"08a648289d31ffff","v":1},{"h":"08a648289d407fff","v":1},{"h":"08a648289d417fff","v":1},{"h":"08a648289d427fff","v":1},{"h":"08a648289d4a7fff","v":1},{"h":"08a648289d4b7fff","v":1},{"h":"08a648289d547fff","v":1},{"h":"08a648289d557fff","v":1},{"h":"08a648289d56ffff","v":1},{"h":"08a648289d607fff","v":1},{"h":"08a648289d61ffff","v":1},{"h":"08a648289d627fff","v":1},{"h":"08a648289d6c7fff","v":1},{"h":"08a648289d6cffff","v":1},{"h":"08a648289d6e7fff","v":1},{"h":"08a648289d70ffff","v":1},{"h":"08a648289da27fff","v":1},{"h":"08a648289da37fff","v":1},{"h":"08a648289db0ffff","v":1},{"h":"08a648289db1ffff","v":1},{"h":"08a648289db47fff","v":1},{"h":"08a648289db57fff","v":1},{"h":"08a648289db67fff","v":1},{"h":"08a648289db6ffff","v":1},{"h":"08a648289db77fff","v":1},{"h":"08a648289db8ffff","v":1},{"h":"08a648289db9ffff","v":1},{"h":"08a648289dc27fff","v":1},{"h":"08a648289dc2ffff","v":1},{"h":"08a648289dd17fff","v":1},{"h":"08a648289dd1ffff","v":1},{"h":"08a648289e207fff","v":1},{"h":"08a648289e217fff","v":1},{"h":"08a648289e22ffff","v":1},{"h":"08a648289e2a7fff","v":1},{"h":"08a648289e2b7fff","v":1},{"h":"08a648289e34ffff","v":1},{"h":"08a648289e35ffff","v":1},{"h":"08a648289e60ffff","v":1},{"h":"08a648289e61ffff","v":1},{"h":"08a648289e62ffff","v":1},{"h":"08a648289e687fff","v":1},{"h":"08a648289e6affff","v":1},{"h":"08a648289e6b7fff","v":1},{"h":"08a648289e6dffff","v":1},{"h":"08a648289e74ffff","v":1},{"h":"08a648289e75ffff","v":1},{"h":"08a648289e907fff","v":1},{"h":"08a648289e917fff","v":1},{"h":"08a648289e92ffff","v":1},{"h":"08a648289e987fff","v":1},{"h":"08a648289e997fff","v":1},{"h":"08a648289e99ffff","v":1},{"h":"08a648289e9affff","v":1},{"h":"08a648289eb2ffff","v":1},{"h":"08a648289ed0ffff","v":1},{"h":"08a648289ed1ffff","v":1},{"h":"08a648289ed67fff","v":2},{"h":"08a648289ed77fff","v":1},{"h":"08a64828ab297fff","v":1},{"h":"08a64828ab29ffff","v":1},{"h":"08a64828ab2b7fff","v":1},{"h":"08a64828ab2d7fff","v":1},{"h":"08a64828ab60ffff","v":1},{"h":"08a64828ab677fff","v":1},{"h":"08a64828ab6c7fff","v":1},{"h":"08a64828ab6dffff","v":1},{"h":"08a64828ab6e7fff","v":1},{"h":"08a64828ab74ffff","v":1},{"h":"08a64828ab75ffff","v":1},{"h":"08a64828c4d17fff","v":1},{"h":"08a64828c4d87fff","v":1},{"h":"08a64828c4d9ffff","v":1},{"h":"08a64828c4daffff","v":1},{"h":"08a64828e0687fff","v":1},{"h":"08a64828e068ffff","v":1},{"h":"08a64828e069ffff","v":1},{"h":"08a64828e06c7fff","v":1},{"h":"08a64828e06effff","v":1},{"h":"08a64828e06f7fff","v":1},{"h":"08a64828e2227fff","v":1},{"h":"08a64828e2237fff","v":1},{"h":"08a64828e230ffff","v":1},{"h":"08a64828e2377fff","v":1},{"h":"08a64828e2a47fff","v":1},{"h":"08a64828e2a4ffff","v":1},{"h":"08a64828e2a5ffff","v":1},{"h":"08a64828e2a6ffff","v":1},{"h":"08a64828e2acffff","v":1},{"h":"08a64828e2adffff","v":1},{"h":"08a64828e2aeffff","v":1},{"h":"08a64828e3827fff","v":1},{"h":"08a64828e391ffff","v":1},{"h":"08a64828e394ffff","v":1},{"h":"08a64828e3957fff","v":1},{"h":"08a64828e395ffff","v":1},{"h":"08a64828e39a7fff","v":1},{"h":"08a64828e39affff","v":1},{"h":"08a64828e39b7fff","v":1},{"h":"08a64828e3a67fff","v":1},{"h":"08a64828e3a6ffff","v":1},{"h":"08a64828e3b47fff","v":1},{"h":"08a64828e3b4ffff","v":1},{"h":"08a64828e3b77fff","v":1},{"h":"08a64828eaa17fff","v":1},{"h":"08a64828eaaaffff","v":1},{"h":"08a64828eb187fff","v":1},{"h":"08a64828eb18ffff","v":1},{"h":"08a64828ebd9ffff","v":1},{"h":"08a64828ee277fff","v":1},{"h":"08a64828ee8b7fff","v":1},{"h":"08a64828eed07fff","v":1},{"h":"08a64828eed0ffff","v":1},{"h":"08a64828eed37fff","v":1},{"h":"08a64828eed47fff","v":1},{"h":"08a64828eed4ffff","v":1},{"h":"08a64828eed6ffff","v":1},{"h":"08a64828eed77fff","v":1},{"h":"08a64828f1207fff","v":1},{"h":"08a64828f1217fff","v":1},{"h":"08a64828f122ffff","v":1},{"h":"08a64828f1347fff","v":1},{"h":"08a64828f135ffff","v":1},{"h":"08a64828f136ffff","v":1},{"h":"08a64828f138ffff","v":1},{"h":"08a64828f139ffff","v":1},{"h":"08a64828f171ffff","v":1},{"h":"08a64828f17b7fff","v":1},{"h":"08a64828f2087fff","v":1},{"h":"08a64828f209ffff","v":1},{"h":"08a64828f20a7fff","v":2},{"h":"08a64828f20affff","v":1},{"h":"08a64828f20b7fff","v":1},{"h":"08a64828f2107fff","v":1},{"h":"08a64828f211ffff","v":1},{"h":"08a64828f2127fff","v":1},{"h":"08a64828f218ffff","v":1},{"h":"08a64828f21affff","v":1},{"h":"08a64828f2437fff","v":1},{"h":"08a64828f2447fff","v":1},{"h":"08a64828f244ffff","v":1},{"h":"08a64828f2457fff","v":1},{"h":"08a64828f246ffff","v":1},{"h":"08a64828f24c7fff","v":1},{"h":"08a64828f24cffff","v":1},{"h":"08a64828f24d7fff","v":1},{"h":"08a64828f24dffff","v":1},{"h":"08a64828f24effff","v":1},{"h":"08a64828f24f7fff","v":1},{"h":"08a64828f2547fff","v":1},{"h":"08a64828f256ffff","v":1},{"h":"08a64828f2597fff","v":1},{"h":"08a64828f25affff","v":1},{"h":"08a64828f2797fff","v":1},{"h":"08a64828f27a7fff","v":1},{"h":"08a64828f27b7fff","v":1},{"h":"08a64828f2807fff","v":1},{"h":"08a64828f2817fff","v":1},{"h":"08a64828f2827fff","v":1},{"h":"08a64828f288ffff","v":1},{"h":"08a64828f28affff","v":1},{"h":"08a64828f290ffff","v":1},{"h":"08a64828f2adffff","v":1},{"h":"08a64828f380ffff","v":1},{"h":"08a64828f38a7fff","v":1},{"h":"08a6482b82247fff","v":1},{"h":"08a6482b8226ffff","v":1},{"h":"08a6482b82697fff","v":1},{"h":"08a6482b83527fff","v":1},{"h":"08a6482b83537fff","v":1},{"h":"08a6482b83c8ffff","v":1},{"h":"08a6482b83c97fff","v":1},{"h":"08a6482b83c9ffff","v":1},{"h":"08a6482b83cb7fff","v":1},{"h":"08a6482b83cd7fff","v":1},{"h":"08a6482b9016ffff","v":1},{"h":"08a6482b90327fff","v":1},{"h":"08a6482b9032ffff","v":1},{"h":"08a6482b90347fff","v":1},{"h":"08a6482b9034ffff","v":1},{"h":"08a6482b90377fff","v":1},{"h":"08a6482b90887fff","v":1},{"h":"08a6482b9088ffff","v":1},{"h":"08a6482b908a7fff","v":1},{"h":"08a6482b908affff","v":1},{"h":"08a6482b908b7fff","v":1},{"h":"08a6482b908c7fff","v":1},{"h":"08a6482b908cffff","v":1},{"h":"08a6482b908f7fff","v":1},{"h":"08a6482b90997fff","v":1},{"h":"08a6482b9099ffff","v":1},{"h":"08a6482b909b7fff","v":1},{"h":"08a6482b90a87fff","v":1},{"h":"08a6482b90a8ffff","v":1},{"h":"08a6482b90ab7fff","v":1},{"h":"08a6482b90b97fff","v":1},{"h":"08a6482b91527fff","v":1},{"h":"08a6482b91537fff","v":1},{"h":"08a6482b91c97fff","v":1},{"h":"08a6482b91c9ffff","v":1},{"h":"08a6482b9408ffff","v":1},{"h":"08a6482b940a7fff","v":1},{"h":"08a6482b940affff","v":1},{"h":"08a6482b94117fff","v":1},{"h":"08a6482b9418ffff","v":1},{"h":"08a6482b941affff","v":1},{"h":"08a6482b94607fff","v":1},{"h":"08a6482b9460ffff","v":1},{"h":"08a6482b94627fff","v":1},{"h":"08a6482b946e7fff","v":1},{"h":"08a6482b946effff","v":1},{"h":"08a6482b94707fff","v":1},{"h":"08a6482b9470ffff","v":1},{"h":"08a6482b94727fff","v":1},{"h":"08a6482b94887fff","v":1},{"h":"08a6482b9489ffff","v":1},{"h":"08a6482b948a7fff","v":1},{"h":"08a6482b948b7fff","v":1},{"h":"08a6482b94997fff","v":1},{"h":"08a6482b9499ffff","v":1},{"h":"08a6482b94c4ffff","v":1},{"h":"08a6482b94c6ffff","v":1},{"h":"08a6482bb2747fff","v":1},{"h":"08a6482c248a7fff","v":1},{"h":"08a6482c248b7fff","v":1},{"h":"08a6482c24907fff","v":1},{"h":"08a6482c24917fff","v":1},{"h":"08a6482c2492ffff","v":1},{"h":"08a6482c2498ffff","v":1},{"h":"08a6482c249affff","v":1},{"h":"08a6482c24c07fff","v":1},{"h":"08a6482c24c0ffff","v":1},{"h":"08a6482c24c17fff","v":1},{"h":"08a6482c24c67fff","v":1},{"h":"08a6482c24c77fff","v":1},{"h":"08a6482c24ca7fff","v":1},{"h":"08a6482c24d4ffff","v":1},{"h":"08a6482c24d9ffff","v":1},{"h":"08a6482c26cb7fff","v":1},{"h":"08a6482c26d8ffff","v":1},{"h":"08a6482c26d9ffff","v":1},{"h":"08a6482c3410ffff","v":1},{"h":"08a6482c34117fff","v":1},{"h":"08a6482c3411ffff","v":1},{"h":"08a6482c3414ffff","v":1},{"h":"08a6482c34157fff","v":1},{"h":"08a6482c3415ffff","v":1},{"h":"08a6482c34a57fff","v":1},{"h":"08a6482c34a67fff","v":1},{"h":"08a6482c34a77fff","v":1},{"h":"08a6482c34a87fff","v":1},{"h":"08a6482c34aaffff","v":1},{"h":"08a6482c34ab7fff","v":1},{"h":"08a6482c34ae7fff","v":1},{"h":"08a6482c34af7fff","v":1},{"h":"08a6482c34b4ffff","v":1},{"h":"08a6482c34c27fff","v":1},{"h":"08a6482c34c2ffff","v":1},{"h":"08a6482c34c37fff","v":1},{"h":"08a6482c34c47fff","v":1},{"h":"08a6482c34c4ffff","v":1},{"h":"08a6482c34c77fff","v":1},{"h":"08a6482c34da7fff","v":1},{"h":"08a6482c34daffff","v":1},{"h":"08a6482c4024ffff","v":1},{"h":"08a6482c4025ffff","v":1},{"h":"08a6482c402cffff","v":1},{"h":"08a6482c412c7fff","v":1},{"h":"08a6482c415b7fff","v":1},{"h":"08a6482c41847fff","v":2},{"h":"08a6482c4185ffff","v":1},{"h":"08a6482c41867fff","v":2},{"h":"08a6482c4194ffff","v":2},{"h":"08a6482c4196ffff","v":2},{"h":"08a6482c41b87fff","v":1},{"h":"08a6482c41b9ffff","v":1},{"h":"08a6482c41bb7fff","v":1},{"h":"08a6482c41d77fff","v":1},{"h":"08a6482c431b7fff","v":1},{"h":"08a6482c43407fff","v":1},{"h":"08a6482c43417fff","v":1},{"h":"08a6482c43427fff","v":1},{"h":"08a6482c4348ffff","v":1},{"h":"08a6482c4349ffff","v":1},{"h":"08a6482c434affff","v":1},{"h":"08a6482c43557fff","v":1},{"h":"08a6482c43567fff","v":1},{"h":"08a6482c43577fff","v":1},{"h":"08a6482c43807fff","v":1},{"h":"08a6482c43817fff","v":1},{"h":"08a6482c43827fff","v":1},{"h":"08a6482c43887fff","v":1},{"h":"08a6482c4389ffff","v":1},{"h":"08a6482c438affff","v":1},{"h":"08a6482c43957fff","v":1},{"h":"08a6482c43967fff","v":1},{"h":"08a6482c43977fff","v":1},{"h":"08a6482c43c4ffff","v":1},{"h":"08a6482c43c5ffff","v":1},{"h":"08a6482c43c6ffff","v":1},{"h":"08a6482c43ccffff","v":1},{"h":"08a6482c45207fff","v":1},{"h":"08a6482c45217fff","v":1},{"h":"08a6482c45227fff","v":1},{"h":"08a6482c45247fff","v":2},{"h":"08a6482c4524ffff","v":1},{"h":"08a6482c4525ffff","v":2},{"h":"08a6482c45267fff","v":1},{"h":"08a6482c4526ffff","v":1},{"h":"08a6482c45277fff","v":1},{"h":"08a6482c45357fff","v":2},{"h":"08a6482c4535ffff","v":1},{"h":"08a6482c45377fff","v":2},{"h":"08a6482c4584ffff","v":1},{"h":"08a6482c45a47fff","v":1},{"h":"08a6482c45a5ffff","v":1},{"h":"08a6482c45a6ffff","v":1},{"h":"08a6482c45acffff","v":1},{"h":"08a6482c45adffff","v":1},{"h":"08a6482c45aeffff","v":1},{"h":"08a6482c45b87fff","v":1},{"h":"08a6482c45ba7fff","v":1},{"h":"08a6482c48407fff","v":2},{"h":"08a6482c4840ffff","v":1},{"h":"08a6482c4841ffff","v":2},{"h":"08a6482c4842ffff","v":1},{"h":"08a6482c484d7fff","v":2},{"h":"08a6482c484f7fff","v":2},{"h":"08a6482c48557fff","v":1},{"h":"08a6482c48577fff","v":1},{"h":"08a6482c48827fff","v":2},{"h":"08a6482c4882ffff","v":1},{"h":"08a6482c48837fff","v":1},{"h":"08a6482c48947fff","v":1},{"h":"08a6482c4894ffff","v":1},{"h":"08a6482c4895ffff","v":2},{"h":"08a6482c48967fff","v":1},{"h":"08a6482c489a7fff","v":1},{"h":"08a6482c489affff","v":1},{"h":"08a6482c489b7fff","v":1},{"h":"08a6482c48c57fff","v":2},{"h":"08a6482c48c77fff","v":4},{"h":"08a6482c48cc7fff","v":2},{"h":"08a6482c48cdffff","v":1},{"h":"08a6482c48ce7fff","v":1},{"h":"08a6482c48d47fff","v":2},{"h":"08a6482c48d5ffff","v":3},{"h":"08a6482c48d67fff","v":2},{"h":"08a6482c4a2b7fff","v":1},{"h":"08a6482c4a317fff","v":2},{"h":"08a6482c4a337fff","v":1},{"h":"08a6482c4a387fff","v":1},{"h":"08a6482c4a39ffff","v":1},{"h":"08a6482c4a3affff","v":1},{"h":"08a6482c4aa17fff","v":2},{"h":"08a6482c4aa37fff","v":1},{"h":"08a6482c4aa87fff","v":1},{"h":"08a6482c4aa9ffff","v":1},{"h":"08a6482c4aaaffff","v":1},{"h":"08a6482c4ab0ffff","v":2},{"h":"08a6482c4ab1ffff","v":1},{"h":"08a6482c4ab2ffff","v":2},{"h":"08a6482c4c047fff","v":3},{"h":"08a6482c4c05ffff","v":3},{"h":"08a6482c4c067fff","v":3},{"h":"08a6482c4c09ffff","v":1},{"h":"08a6482c4c0cffff","v":1},{"h":"08a6482c4c0d7fff","v":1},{"h":"08a6482c4c0effff","v":1},{"h":"08a6482c4c14ffff","v":2},{"h":"08a6482c4c16ffff","v":2},{"h":"08a6482c4c247fff","v":1},{"h":"08a6482c4c24ffff","v":2},{"h":"08a6482c4c257fff","v":1},{"h":"08a6482c4c26ffff","v":2},{"h":"08a6482c4c2cffff","v":1},{"h":"08a6482c4c367fff","v":1},{"h":"08a6482c4c36ffff","v":2},{"h":"08a6482c4c397fff","v":1},{"h":"08a6482c4c3b7fff","v":2},{"h":"08a6482c4c467fff","v":1},{"h":"08a6482c4c46ffff","v":1},{"h":"08a6482c4c477fff","v":1},{"h":"08a6482c4c647fff","v":1},{"h":"08a6482c4c657fff","v":2},{"h":"08a6482c4c667fff","v":1},{"h":"08a6482c4c677fff","v":1},{"h":"08a6482c4c6cffff","v":1},{"h":"08a6482c4c6effff","v":2},{"h":"08a6482c4c727fff","v":1},{"h":"08a6482c4c747fff","v":1},{"h":"08a6482c4c74ffff","v":1},{"h":"08a6482c4c75ffff","v":1},{"h":"08a6482c4c767fff","v":1},{"h":"08a6482c4c76ffff","v":1},{"h":"08a6482c4c84ffff","v":1},{"h":"08a6482c4cac7fff","v":1},{"h":"08a6482c4cacffff","v":1},{"h":"08a6482c4cad7fff","v":1},{"h":"08a6482c4cadffff","v":1},{"h":"08a6482c4cb87fff","v":1},{"h":"08a6482c4cb97fff","v":2},{"h":"08a6482c4cba7fff","v":1},{"h":"08a6482c4cbb7fff","v":1},{"h":"08a6482c4d527fff","v":1},{"h":"08a6482c4d537fff","v":3},{"h":"08a6482c4d5a7fff","v":1},{"h":"08a6482c4d5b7fff","v":1},{"h":"08a6482c4dc07fff","v":2},{"h":"08a6482c4dc0ffff","v":1},{"h":"08a6482c4dc17fff","v":1},{"h":"08a6482c4dc1ffff","v":2},{"h":"08a6482c4dc27fff","v":3},{"h":"08a6482c4dc2ffff","v":1},{"h":"08a6482c4dc37fff","v":1},{"h":"08a6482c4dc87fff","v":1},{"h":"08a6482c4dc8ffff","v":2},{"h":"08a6482c4dc97fff","v":2},{"h":"08a6482c4dc9ffff","v":2},{"h":"08a6482c4dcaffff","v":2},{"h":"08a6482c4dcb7fff","v":2},{"h":"08a6482c4dcf7fff","v":2},{"h":"08a6482c4dd0ffff","v":3},{"h":"08a6482c4dd2ffff","v":2},{"h":"08a6482c4dd57fff","v":2},{"h":"08a6482c4dd77fff","v":3},{"h":"08a6482c4dd87fff","v":1},{"h":"08a6482c4dd97fff","v":1},{"h":"08a6482c4dd9ffff","v":2},{"h":"08a6482c4ddb7fff","v":1},{"h":"08a6482c5841ffff","v":1},{"h":"08a6482c5845ffff","v":1},{"h":"08a6482c584a7fff","v":1},{"h":"08a6482c584affff","v":1},{"h":"08a6482c584b7fff","v":1},{"h":"08a6482c584e7fff","v":1},{"h":"08a6482c584effff","v":1},{"h":"08a6482c587a7fff","v":1},{"h":"08a6482c58997fff","v":1},{"h":"08a6482c589b7fff","v":1},{"h":"08a6482c58c27fff","v":1},{"h":"08a6482c58c2ffff","v":1},{"h":"08a6482c58c37fff","v":1},{"h":"08a6482c58c47fff","v":1},{"h":"08a6482c58c4ffff","v":1},{"h":"08a6482c58c5ffff","v":1},{"h":"08a6482c58c67fff","v":1},{"h":"08a6482c58c77fff","v":1},{"h":"08a6482c58d4ffff","v":1},{"h":"08a6482c58d6ffff","v":1},{"h":"08a6482c58da7fff","v":1},{"h":"08a6482c58daffff","v":1},{"h":"08a6482c5a907fff","v":1},{"h":"08a6482c5a90ffff","v":1},{"h":"08a6482c5a91ffff","v":1},{"h":"08a6482c5a92ffff","v":1},{"h":"08a6482c5a947fff","v":1},{"h":"08a6482c5a96ffff","v":1},{"h":"08a6482c5a977fff","v":1},{"h":"08a6482c5c047fff","v":1},{"h":"08a6482c5c05ffff","v":1},{"h":"08a6482c5c067fff","v":1},{"h":"08a6482c5c14ffff","v":1},{"h":"08a6482c5c397fff","v":1},{"h":"08a6482c5c3b7fff","v":1},{"h":"08a6482c5c647fff","v":1},{"h":"08a6482c5c65ffff","v":1},{"h":"08a6482c5c667fff","v":1},{"h":"08a6482c5c74ffff","v":1},{"h":"08a6482c5c76ffff","v":1},{"h":"08a6482c5ca97fff","v":1},{"h":"08a6482c5cab7fff","v":1},{"h":"08a6482c5cb17fff","v":1},{"h":"08a6482c5cb27fff","v":1},{"h":"08a6482c5cb37fff","v":1},{"h":"08a6482c5cb87fff","v":1},{"h":"08a6482c5cb9ffff","v":1},{"h":"08a6482c5cba7fff","v":1},{"h":"08a6482c5cbaffff","v":1},{"h":"08a6482c5e20ffff","v":1},{"h":"08a6482c5e2affff","v":1},{"h":"08a6482c5e2c7fff","v":1},{"h":"08a6482c5e2d7fff","v":1},{"h":"08a6482c5e2e7fff","v":1},{"h":"08a6482c5e2f7fff","v":1},{"h":"08a6482c5ea5ffff","v":1},{"h":"08a6482c6104ffff","v":1},{"h":"08a6482c6106ffff","v":1},{"h":"08a6482c6112ffff","v":1},{"h":"08a6482c61147fff","v":1},{"h":"08a6482c6114ffff","v":1},{"h":"08a6482c61177fff","v":1},{"h":"08a6482c6124ffff","v":1},{"h":"08a6482c61267fff","v":1},{"h":"08a6482c6126ffff","v":1},{"h":"08a6482c61297fff","v":2},{"h":"08a6482c612b7fff","v":2},{"h":"08a6482c61307fff","v":1},{"h":"08a6482c6130ffff","v":1},{"h":"08a6482c61317fff","v":1},{"h":"08a6482c61327fff","v":1},{"h":"08a6482c6132ffff","v":1},{"h":"08a6482c61337fff","v":1},{"h":"08a6482c61357fff","v":1},{"h":"08a6482c6135ffff","v":1},{"h":"08a6482c61387fff","v":1},{"h":"08a6482c6138ffff","v":1},{"h":"08a6482c6139ffff","v":2},{"h":"08a6482c613a7fff","v":2},{"h":"08a6482c613affff","v":1},{"h":"08a6482c61407fff","v":2},{"h":"08a6482c61417fff","v":2},{"h":"08a6482c6141ffff","v":2},{"h":"08a6482c61427fff","v":1},{"h":"08a6482c61437fff","v":1},{"h":"08a6482c61487fff","v":1},{"h":"08a6482c6148ffff","v":1},{"h":"08a6482c6149ffff","v":1},{"h":"08a6482c614d7fff","v":3},{"h":"08a6482c614f7fff","v":2},{"h":"08a6482c61507fff","v":2},{"h":"08a6482c6150ffff","v":1},{"h":"08a6482c6151ffff","v":2},{"h":"08a6482c61527fff","v":1},{"h":"08a6482c6152ffff","v":1},{"h":"08a6482c6164ffff","v":1},{"h":"08a6482c6166ffff","v":2},{"h":"08a6482c616cffff","v":4},{"h":"08a6482c616dffff","v":3},{"h":"08a6482c61887fff","v":1},{"h":"08a6482c6188ffff","v":1},{"h":"08a6482c618b7fff","v":1},{"h":"08a6482c618d7fff","v":1},{"h":"08a6482c61a37fff","v":1},{"h":"08a6482c61a87fff","v":1},{"h":"08a6482c61a97fff","v":2},{"h":"08a6482c61a9ffff","v":2},{"h":"08a6482c61aa7fff","v":1},{"h":"08a6482c61b07fff","v":1},{"h":"08a6482c61b1ffff","v":1},{"h":"08a6482c61b2ffff","v":1},{"h":"08a6482c61b8ffff","v":1},{"h":"08a6482c61c17fff","v":1},{"h":"08a6482c61c37fff","v":1},{"h":"08a6482c61c8ffff","v":1},{"h":"08a6482c61caffff","v":1},{"h":"08a6482c61cd7fff","v":1},{"h":"08a6482c61d0ffff","v":1},{"h":"08a6482c61d1ffff","v":1},{"h":"08a6482c61d2ffff","v":1},{"h":"08a6482c61d67fff","v":1},{"h":"08a6482c61d6ffff","v":1},{"h":"08a6482c61d77fff","v":1},{"h":"08a6482c63147fff","v":3},{"h":"08a6482c63167fff","v":2},{"h":"08a6482c6316ffff","v":3},{"h":"08a6482c6322ffff","v":1},{"h":"08a6482c63247fff","v":4},{"h":"08a6482c63257fff","v":3},{"h":"08a6482c6326ffff","v":4},{"h":"08a6482c63277fff","v":4},{"h":"08a6482c63347fff","v":2},{"h":"08a6482c63357fff","v":3},{"h":"08a6482c6335ffff","v":4},{"h":"08a6482c63377fff","v":4},{"h":"08a6482c63a07fff","v":2},{"h":"08a6482c63a0ffff","v":3},{"h":"08a6482c63a17fff","v":1},{"h":"08a6482c63a27fff","v":2},{"h":"08a6482c63a2ffff","v":3},{"h":"08a6482c63a37fff","v":1},{"h":"08a6482c63ac7fff","v":3},{"h":"08a6482c63adffff","v":3},{"h":"08a6482c63ae7fff","v":3},{"h":"08a6482c63b07fff","v":2},{"h":"08a6482c63b0ffff","v":3},{"h":"08a6482c63b1ffff","v":3},{"h":"08a6482c63b27fff","v":3},{"h":"08a6482c63b2ffff","v":1},{"h":"08a6482c63b57fff","v":3},{"h":"08a6482c63b87fff","v":3},{"h":"08a6482c63b8ffff","v":2},{"h":"08a6482c63b97fff","v":3},{"h":"08a6482c63b9ffff","v":2},{"h":"08a6482c63baffff","v":3},{"h":"08a6482c65207fff","v":1},{"h":"08a6482c65217fff","v":2},{"h":"08a6482c65227fff","v":1},{"h":"08a6482c65287fff","v":1},{"h":"08a6482c65297fff","v":1},{"h":"08a6482c652a7fff","v":1},{"h":"08a6482c65357fff","v":1},{"h":"08a6482c65367fff","v":1},{"h":"08a6482c65377fff","v":1},{"h":"08a6482c65657fff","v":1},{"h":"08a6482c65667fff","v":1},{"h":"08a6482c65677fff","v":1},{"h":"08a6482c656c7fff","v":1},{"h":"08a6482c656dffff","v":1},{"h":"08a6482c656e7fff","v":1},{"h":"08a6482c6596ffff","v":1},{"h":"08a6482c65a27fff","v":1},{"h":"08a6482c65a2ffff","v":1},{"h":"08a6482c65a57fff","v":1},{"h":"08a6482c65a5ffff","v":1},{"h":"08a6482c65a77fff","v":1},{"h":"08a6482c65acffff","v":1},{"h":"08a6482c65b07fff","v":1},{"h":"08a6482c65b0ffff","v":1},{"h":"08a6482c65b27fff","v":1},{"h":"08a6482c65b37fff","v":1},{"h":"08a6482c68007fff","v":1},{"h":"08a6482c68017fff","v":1},{"h":"08a6482c68027fff","v":4},{"h":"08a6482c68067fff","v":43},{"h":"08a6482c6806ffff","v":43},{"h":"08a6482c680a7fff","v":2},{"h":"08a6482c680affff","v":2},{"h":"08a6482c680b7fff","v":2},{"h":"08a6482c680c7fff","v":1},{"h":"08a6482c680cffff","v":1},{"h":"08a6482c680d7fff","v":1},{"h":"08a6482c680dffff","v":1},{"h":"08a6482c680f7fff","v":2},{"h":"08a6482c68107fff","v":29},{"h":"08a6482c6810ffff","v":38},{"h":"08a6482c68117fff","v":15},{"h":"08a6482c6811ffff","v":8},{"h":"08a6482c68127fff","v":18},{"h":"08a6482c6812ffff","v":5},{"h":"08a6482c68137fff","v":33},{"h":"08a6482c68147fff","v":2},{"h":"08a6482c68157fff","v":42},{"h":"08a6482c6815ffff","v":43},{"h":"08a6482c68167fff","v":1},{"h":"08a6482c6816ffff","v":1},{"h":"08a6482c68177fff","v":5},{"h":"08a6482c6819ffff","v":1},{"h":"08a6482c6820ffff","v":2},{"h":"08a6482c6821ffff","v":1},{"h":"08a6482c6822ffff","v":1},{"h":"08a6482c68247fff","v":36},{"h":"08a6482c6824ffff","v":55},{"h":"08a6482c68257fff","v":1},{"h":"08a6482c6825ffff","v":2},{"h":"08a6482c68267fff","v":55},{"h":"08a6482c6826ffff","v":41},{"h":"08a6482c68277fff","v":6},{"h":"08a6482c68287fff","v":2},{"h":"08a6482c6829ffff","v":2},{"h":"08a6482c682affff","v":1},{"h":"08a6482c682b7fff","v":2},{"h":"08a6482c68307fff","v":48},{"h":"08a6482c6830ffff","v":54},{"h":"08a6482c68327fff","v":1},{"h":"08a6482c6832ffff","v":2},{"h":"08a6482c68337fff","v":47},{"h":"08a6482c68347fff","v":6},{"h":"08a6482c6834ffff","v":34},{"h":"08a6482c68357fff","v":53},{"h":"08a6482c6835ffff","v":55},{"h":"08a6482c68367fff","v":2},{"h":"08a6482c6836ffff","v":33},{"h":"08a6482c68377fff","v":3},{"h":"08a6482c68407fff","v":1},{"h":"08a6482c68417fff","v":1},{"h":"08a6482c6841ffff","v":1},{"h":"08a6482c68427fff","v":1},{"h":"08a6482c68437fff","v":1},{"h":"08a6482c6848ffff","v":2},{"h":"08a6482c68497fff","v":1},{"h":"08a6482c6849ffff","v":1},{"h":"08a6482c684affff","v":2},{"h":"08a6482c68507fff","v":1},{"h":"08a6482c68517fff","v":1},{"h":"08a6482c6851ffff","v":1},{"h":"08a6482c68527fff","v":1},{"h":"08a6482c6852ffff","v":1},{"h":"08a6482c68557fff","v":1},{"h":"08a6482c68567fff","v":2},{"h":"08a6482c6856ffff","v":2},{"h":"08a6482c68577fff","v":1},{"h":"08a6482c68607fff","v":1},{"h":"08a6482c6861ffff","v":1},{"h":"08a6482c68627fff","v":1},{"h":"08a6482c6868ffff","v":1},{"h":"08a6482c686affff","v":1},{"h":"08a6482c68747fff","v":2},{"h":"08a6482c6874ffff","v":1},{"h":"08a6482c68757fff","v":1},{"h":"08a6482c68767fff","v":2},{"h":"08a6482c6876ffff","v":1},{"h":"08a6482c68777fff","v":1},{"h":"08a6482c68807fff","v":38},{"h":"08a6482c6880ffff","v":6},{"h":"08a6482c68817fff","v":3},{"h":"08a6482c6881ffff","v":43},{"h":"08a6482c68827fff","v":14},{"h":"08a6482c6882ffff","v":32},{"h":"08a6482c68837fff","v":1},{"h":"08a6482c68847fff","v":2},{"h":"08a6482c6884ffff","v":3},{"h":"08a6482c68867fff","v":1},{"h":"08a6482c6886ffff","v":1},{"h":"08a6482c68877fff","v":1},{"h":"08a6482c68887fff","v":3},{"h":"08a6482c6888ffff","v":38},{"h":"08a6482c68897fff","v":1},{"h":"08a6482c6889ffff","v":24},{"h":"08a6482c688a7fff","v":2},{"h":"08a6482c688affff","v":32},{"h":"08a6482c688b7fff","v":3},{"h":"08a6482c688c7fff","v":1},{"h":"08a6482c688d7fff","v":5},{"h":"08a6482c688dffff","v":2},{"h":"08a6482c688f7fff","v":16},{"h":"08a6482c68907fff","v":1},{"h":"08a6482c6890ffff","v":4},{"h":"08a6482c68917fff","v":1},{"h":"08a6482c6891ffff","v":2},{"h":"08a6482c68927fff","v":2},{"h":"08a6482c6892ffff","v":5},{"h":"08a6482c68947fff","v":32},{"h":"08a6482c68957fff","v":38},{"h":"08a6482c6895ffff","v":6},{"h":"08a6482c68967fff","v":32},{"h":"08a6482c6896ffff","v":1},{"h":"08a6482c68977fff","v":22},{"h":"08a6482c68987fff","v":1},{"h":"08a6482c6898ffff","v":1},{"h":"08a6482c68997fff","v":5},{"h":"08a6482c6899ffff","v":4},{"h":"08a6482c689a7fff","v":1},{"h":"08a6482c689b7fff","v":4},{"h":"08a6482c68a07fff","v":1},{"h":"08a6482c68a0ffff","v":1},{"h":"08a6482c68a27fff","v":2},{"h":"08a6482c68a2ffff","v":2},{"h":"08a6482c68a37fff","v":1},{"h":"08a6482c68a47fff","v":2},{"h":"08a6482c68a4ffff","v":1},{"h":"08a6482c68a5ffff","v":1},{"h":"08a6482c68a6ffff","v":1},{"h":"08a6482c68a77fff","v":2},{"h":"08a6482c68a9ffff","v":1},{"h":"08a6482c68ac7fff","v":1},{"h":"08a6482c68adffff","v":2},{"h":"08a6482c68ae7fff","v":1},{"h":"08a6482c68b07fff","v":1},{"h":"08a6482c68b17fff","v":2},{"h":"08a6482c68b1ffff","v":2},{"h":"08a6482c68b37fff","v":3},{"h":"08a6482c68b57fff","v":1},{"h":"08a6482c68b87fff","v":1},{"h":"08a6482c68b97fff","v":1},{"h":"08a6482c68ba7fff","v":2},{"h":"08a6482c68baffff","v":1},{"h":"08a6482c68c47fff","v":2},{"h":"08a6482c68c4ffff","v":10},{"h":"08a6482c68c57fff","v":2},{"h":"08a6482c68c67fff","v":4},{"h":"08a6482c68c6ffff","v":3},{"h":"08a6482c68c77fff","v":1},{"h":"08a6482c68c8ffff","v":1},{"h":"08a6482c68c97fff","v":1},{"h":"08a6482c68c9ffff","v":1},{"h":"08a6482c68cc7fff","v":1},{"h":"08a6482c68cd7fff","v":2},{"h":"08a6482c68cdffff","v":3},{"h":"08a6482c68ce7fff","v":2},{"h":"08a6482c68cf7fff","v":1},{"h":"08a6482c68d07fff","v":1},{"h":"08a6482c68d0ffff","v":2},{"h":"08a6482c68d17fff","v":1},{"h":"08a6482c68d2ffff","v":3},{"h":"08a6482c68d4ffff","v":2},{"h":"08a6482c68d57fff","v":2},{"h":"08a6482c68d5ffff","v":2},{"h":"08a6482c68d67fff","v":1},{"h":"08a6482c68d6ffff","v":3},{"h":"08a6482c68d77fff","v":2},{"h":"08a6482c69007fff","v":1},{"h":"08a6482c6900ffff","v":1},{"h":"08a6482c6901ffff","v":3},{"h":"08a6482c6902ffff","v":2},{"h":"08a6482c69047fff","v":6},{"h":"08a6482c6904ffff","v":6},{"h":"08a6482c69057fff","v":3},{"h":"08a6482c6905ffff","v":9},{"h":"08a6482c69067fff","v":2},{"h":"08a6482c69077fff","v":5},{"h":"08a6482c69087fff","v":3},{"h":"08a6482c6908ffff","v":5},{"h":"08a6482c69097fff","v":1},{"h":"08a6482c6909ffff","v":6},{"h":"08a6482c690a7fff","v":1},{"h":"08a6482c690affff","v":4},{"h":"08a6482c690b7fff","v":2},{"h":"08a6482c690c7fff","v":2},{"h":"08a6482c690cffff","v":10},{"h":"08a6482c690d7fff","v":4},{"h":"08a6482c690dffff","v":10},{"h":"08a6482c690e7fff","v":2},{"h":"08a6482c690effff","v":7},{"h":"08a6482c690f7fff","v":1},{"h":"08a6482c69107fff","v":6},{"h":"08a6482c6910ffff","v":6},{"h":"08a6482c69137fff","v":5},{"h":"08a6482c6914ffff","v":2},{"h":"08a6482c69157fff","v":7},{"h":"08a6482c6915ffff","v":8},{"h":"08a6482c69197fff","v":2},{"h":"08a6482c6919ffff","v":1},{"h":"08a6482c691a7fff","v":1},{"h":"08a6482c691b7fff","v":2},{"h":"08a6482c69207fff","v":1},{"h":"08a6482c6920ffff","v":1},{"h":"08a6482c69237fff","v":1},{"h":"08a6482c692c7fff","v":1},{"h":"08a6482c692dffff","v":1},{"h":"08a6482c692e7fff","v":1},{"h":"08a6482c692effff","v":1},{"h":"08a6482c69317fff","v":1},{"h":"08a6482c69327fff","v":1},{"h":"08a6482c69337fff","v":4},{"h":"08a6482c69397fff","v":1},{"h":"08a6482c693a7fff","v":3},{"h":"08a6482c693affff","v":1},{"h":"08a6482c693b7fff","v":4},{"h":"08a6482c69407fff","v":17},{"h":"08a6482c6940ffff","v":1},{"h":"08a6482c69417fff","v":50},{"h":"08a6482c6941ffff","v":57},{"h":"08a6482c69427fff","v":2},{"h":"08a6482c6942ffff","v":1},{"h":"08a6482c69437fff","v":53},{"h":"08a6482c69447fff","v":5},{"h":"08a6482c6944ffff","v":3},{"h":"08a6482c69457fff","v":5},{"h":"08a6482c6945ffff","v":8},{"h":"08a6482c69467fff","v":5},{"h":"08a6482c6946ffff","v":6},{"h":"08a6482c69477fff","v":3},{"h":"08a6482c69497fff","v":1},{"h":"08a6482c6949ffff","v":1},{"h":"08a6482c694c7fff","v":72},{"h":"08a6482c694cffff","v":72},{"h":"08a6482c694d7fff","v":19},{"h":"08a6482c694dffff","v":32},{"h":"08a6482c694e7fff","v":37},{"h":"08a6482c694effff","v":11},{"h":"08a6482c694f7fff","v":29},{"h":"08a6482c69517fff","v":48},{"h":"08a6482c6951ffff","v":6},{"h":"08a6482c69537fff","v":6},{"h":"08a6482c6954ffff","v":3},{"h":"08a6482c69557fff","v":2},{"h":"08a6482c6955ffff","v":1},{"h":"08a6482c69567fff","v":2},{"h":"08a6482c6956ffff","v":3},{"h":"08a6482c69577fff","v":1},{"h":"08a6482c6958ffff","v":6},{"h":"08a6482c695a7fff","v":15},{"h":"08a6482c695affff","v":57},{"h":"08a6482c69607fff","v":11},{"h":"08a6482c6960ffff","v":5},{"h":"08a6482c69617fff","v":1},{"h":"08a6482c6961ffff","v":15},{"h":"08a6482c69627fff","v":5},{"h":"08a6482c6962ffff","v":12},{"h":"08a6482c69637fff","v":2},{"h":"08a6482c6968ffff","v":1},{"h":"08a6482c69697fff","v":78},{"h":"08a6482c6969ffff","v":64},{"h":"08a6482c696b7fff","v":36},{"h":"08a6482c696d7fff","v":29},{"h":"08a6482c696dffff","v":10},{"h":"08a6482c696e7fff","v":3},{"h":"08a6482c696f7fff","v":17},{"h":"08a6482c6970ffff","v":1},{"h":"08a6482c69717fff","v":2},{"h":"08a6482c6971ffff","v":3},{"h":"08a6482c69727fff","v":1},{"h":"08a6482c6972ffff","v":3},{"h":"08a6482c69737fff","v":2},{"h":"08a6482c69747fff","v":2},{"h":"08a6482c69757fff","v":13},{"h":"08a6482c69767fff","v":5},{"h":"08a6482c69777fff","v":13},{"h":"08a6482c69787fff","v":2},{"h":"08a6482c69797fff","v":7},{"h":"08a6482c6979ffff","v":2},{"h":"08a6482c697a7fff","v":4},{"h":"08a6482c697affff","v":2},{"h":"08a6482c697b7fff","v":2},{"h":"08a6482c69847fff","v":1},{"h":"08a6482c6984ffff","v":1},{"h":"08a6482c6985ffff","v":1},{"h":"08a6482c69867fff","v":1},{"h":"08a6482c6986ffff","v":1},{"h":"08a6482c6994ffff","v":2},{"h":"08a6482c69a0ffff","v":2},{"h":"08a6482c69a1ffff","v":2},{"h":"08a6482c69a2ffff","v":2},{"h":"08a6482c69a57fff","v":1},{"h":"08a6482c69a77fff","v":2},{"h":"08a6482c69a8ffff","v":4},{"h":"08a6482c69a9ffff","v":3},{"h":"08a6482c69ab7fff","v":1},{"h":"08a6482c69ae7fff","v":1},{"h":"08a6482c69af7fff","v":3},{"h":"08a6482c69b47fff","v":3},{"h":"08a6482c69b4ffff","v":2},{"h":"08a6482c69b5ffff","v":4},{"h":"08a6482c69b6ffff","v":4},{"h":"08a6482c69b87fff","v":1},{"h":"08a6482c69b9ffff","v":1},{"h":"08a6482c69ba7fff","v":1},{"h":"08a6482c69bb7fff","v":1},{"h":"08a6482c69c27fff","v":2},{"h":"08a6482c69c2ffff","v":1},{"h":"08a6482c69c47fff","v":3},{"h":"08a6482c69c4ffff","v":2},{"h":"08a6482c69c5ffff","v":2},{"h":"08a6482c69c67fff","v":12},{"h":"08a6482c69c6ffff","v":7},{"h":"08a6482c69c97fff","v":8},{"h":"08a6482c69c9ffff","v":2},{"h":"08a6482c69cb7fff","v":8},{"h":"08a6482c69ccffff","v":2},{"h":"08a6482c69cdffff","v":1},{"h":"08a6482c69ceffff","v":1},{"h":"08a6482c69d07fff","v":32},{"h":"08a6482c69d0ffff","v":10},{"h":"08a6482c69d17fff","v":39},{"h":"08a6482c69d1ffff","v":4},{"h":"08a6482c69d27fff","v":43},{"h":"08a6482c69d2ffff","v":3},{"h":"08a6482c69d37fff","v":12},{"h":"08a6482c69d47fff","v":1},{"h":"08a6482c69d57fff","v":10},{"h":"08a6482c69d5ffff","v":11},{"h":"08a6482c69d77fff","v":2},{"h":"08a6482c69d87fff","v":37},{"h":"08a6482c69d97fff","v":6},{"h":"08a6482c69d9ffff","v":34},{"h":"08a6482c69da7fff","v":6},{"h":"08a6482c69daffff","v":31},{"h":"08a6482c69db7fff","v":1},{"h":"08a6482c6a587fff","v":1},{"h":"08a6482c6a597fff","v":2},{"h":"08a6482c6a59ffff","v":1},{"h":"08a6482c6a5a7fff","v":1},{"h":"08a6482c6a5b7fff","v":2},{"h":"08a6482c6a827fff","v":14},{"h":"08a6482c6a82ffff","v":11},{"h":"08a6482c6a847fff","v":15},{"h":"08a6482c6a84ffff","v":18},{"h":"08a6482c6a867fff","v":8},{"h":"08a6482c6a86ffff","v":4},{"h":"08a6482c6a877fff","v":12},{"h":"08a6482c6a907fff","v":9},{"h":"08a6482c6a90ffff","v":7},{"h":"08a6482c6a917fff","v":9},{"h":"08a6482c6a91ffff","v":12},{"h":"08a6482c6a937fff","v":10},{"h":"08a6482c6a957fff","v":9},{"h":"08a6482c6a95ffff","v":10},{"h":"08a6482c6aa0ffff","v":1},{"h":"08a6482c6aa27fff","v":16},{"h":"08a6482c6aa2ffff","v":16},{"h":"08a6482c6aa47fff","v":16},{"h":"08a6482c6aa4ffff","v":17},{"h":"08a6482c6aa57fff","v":1},{"h":"08a6482c6aa77fff","v":15},{"h":"08a6482c6ab07fff","v":2},{"h":"08a6482c6ab17fff","v":15},{"h":"08a6482c6ab1ffff","v":16},{"h":"08a6482c6ab27fff","v":1},{"h":"08a6482c6ab37fff","v":2},{"h":"08a6482c6b067fff","v":1},{"h":"08a6482c6b127fff","v":1},{"h":"08a6482c6b14ffff","v":1},{"h":"08a6482c6b16ffff","v":1},{"h":"08a6482c6b207fff","v":1},{"h":"08a6482c6b217fff","v":3},{"h":"08a6482c6b227fff","v":2},{"h":"08a6482c6b237fff","v":3},{"h":"08a6482c6b287fff","v":2},{"h":"08a6482c6b297fff","v":1},{"h":"08a6482c6b29ffff","v":1},{"h":"08a6482c6b2a7fff","v":1},{"h":"08a6482c6b2affff","v":1},{"h":"08a6482c6b30ffff","v":3},{"h":"08a6482c6b31ffff","v":1},{"h":"08a6482c6b367fff","v":2},{"h":"08a6482c6b377fff","v":4},{"h":"08a6482c6b537fff","v":1},{"h":"08a6482c6b647fff","v":3},{"h":"08a6482c6b657fff","v":3},{"h":"08a6482c6b667fff","v":1},{"h":"08a6482c6b66ffff","v":2},{"h":"08a6482c6b6c7fff","v":3},{"h":"08a6482c6b6d7fff","v":2},{"h":"08a6482c6b6dffff","v":2},{"h":"08a6482c6b6e7fff","v":2},{"h":"08a6482c6b6effff","v":2},{"h":"08a6482c6b80ffff","v":1},{"h":"08a6482c6b817fff","v":1},{"h":"08a6482c6b81ffff","v":1},{"h":"08a6482c6b827fff","v":1},{"h":"08a6482c6b82ffff","v":1},{"h":"08a6482c6b847fff","v":3},{"h":"08a6482c6b84ffff","v":14},{"h":"08a6482c6b857fff","v":2},{"h":"08a6482c6b85ffff","v":17},{"h":"08a6482c6b877fff","v":1},{"h":"08a6482c6b887fff","v":10},{"h":"08a6482c6b88ffff","v":19},{"h":"08a6482c6b897fff","v":21},{"h":"08a6482c6b89ffff","v":15},{"h":"08a6482c6b8a7fff","v":1},{"h":"08a6482c6b8affff","v":1},{"h":"08a6482c6b8b7fff","v":1},{"h":"08a6482c6b8c7fff","v":20},{"h":"08a6482c6b8cffff","v":2},{"h":"08a6482c6b8d7fff","v":13},{"h":"08a6482c6b8e7fff","v":3},{"h":"08a6482c6b8effff","v":20},{"h":"08a6482c6b8f7fff","v":17},{"h":"08a6482c6b907fff","v":1},{"h":"08a6482c6b91ffff","v":1},{"h":"08a6482c6b927fff","v":2},{"h":"08a6482c6b92ffff","v":1},{"h":"08a6482c6b947fff","v":1},{"h":"08a6482c6b94ffff","v":1},{"h":"08a6482c6b977fff","v":1},{"h":"08a6482c6b99ffff","v":1},{"h":"08a6482c6ba07fff","v":2},{"h":"08a6482c6ba0ffff","v":1},{"h":"08a6482c6ba17fff","v":3},{"h":"08a6482c6ba1ffff","v":4},{"h":"08a6482c6ba2ffff","v":1},{"h":"08a6482c6ba37fff","v":2},{"h":"08a6482c6ba4ffff","v":9},{"h":"08a6482c6ba57fff","v":1},{"h":"08a6482c6ba5ffff","v":7},{"h":"08a6482c6ba6ffff","v":39},{"h":"08a6482c6ba77fff","v":1},{"h":"08a6482c6ba87fff","v":1},{"h":"08a6482c6ba8ffff","v":1},{"h":"08a6482c6ba97fff","v":1},{"h":"08a6482c6baaffff","v":1},{"h":"08a6482c6bacffff","v":4},{"h":"08a6482c6badffff","v":3},{"h":"08a6482c6bae7fff","v":5},{"h":"08a6482c6baeffff","v":8},{"h":"08a6482c6baf7fff","v":1},{"h":"08a6482c6bb07fff","v":21},{"h":"08a6482c6bb0ffff","v":1},{"h":"08a6482c6bb17fff","v":16},{"h":"08a6482c6bb1ffff","v":2},{"h":"08a6482c6bb27fff","v":13},{"h":"08a6482c6bb2ffff","v":18},{"h":"08a6482c6bb37fff","v":14},{"h":"08a6482c6bb47fff","v":2},{"h":"08a6482c6bb4ffff","v":61},{"h":"08a6482c6bb57fff","v":1},{"h":"08a6482c6bb67fff","v":75},{"h":"08a6482c6bb6ffff","v":77},{"h":"08a6482c6bb77fff","v":1},{"h":"08a6482c6bb87fff","v":1},{"h":"08a6482c6bb8ffff","v":2},{"h":"08a6482c6bb97fff","v":1},{"h":"08a6482c6bba7fff","v":16},{"h":"08a6482c6bbaffff","v":4},{"h":"08a6482c6bbb7fff","v":9},{"h":"08a6482c6bc17fff","v":2},{"h":"08a6482c6bc27fff","v":6},{"h":"08a6482c6bc37fff","v":2},{"h":"08a6482c6bc67fff","v":10},{"h":"08a6482c6bc6ffff","v":1},{"h":"08a6482c6bc87fff","v":2},{"h":"08a6482c6bc9ffff","v":2},{"h":"08a6482c6bca7fff","v":1},{"h":"08a6482c6bcaffff","v":1},{"h":"08a6482c6bd07fff","v":6},{"h":"08a6482c6bd0ffff","v":17},{"h":"08a6482c6bd17fff","v":16},{"h":"08a6482c6bd1ffff","v":16},{"h":"08a6482c6bd27fff","v":1},{"h":"08a6482c6bd37fff","v":1},{"h":"08a6482c6bd47fff","v":4},{"h":"08a6482c6bd4ffff","v":17},{"h":"08a6482c6bd57fff","v":20},{"h":"08a6482c6bd5ffff","v":20},{"h":"08a6482c6bd6ffff","v":1},{"h":"08a6482c6bd77fff","v":1},{"h":"08a6482c6bd8ffff","v":1},{"h":"08a6482c6c0cffff","v":1},{"h":"08a6482c6c0effff","v":1},{"h":"08a6482c6c207fff","v":41},{"h":"08a6482c6c20ffff","v":39},{"h":"08a6482c6c217fff","v":10},{"h":"08a6482c6c21ffff","v":4},{"h":"08a6482c6c227fff","v":30},{"h":"08a6482c6c22ffff","v":8},{"h":"08a6482c6c237fff","v":48},{"h":"08a6482c6c247fff","v":29},{"h":"08a6482c6c24ffff","v":36},{"h":"08a6482c6c257fff","v":35},{"h":"08a6482c6c25ffff","v":25},{"h":"08a6482c6c267fff","v":1},{"h":"08a6482c6c26ffff","v":1},{"h":"08a6482c6c277fff","v":16},{"h":"08a6482c6c287fff","v":13},{"h":"08a6482c6c28ffff","v":17},{"h":"08a6482c6c297fff","v":4},{"h":"08a6482c6c29ffff","v":1},{"h":"08a6482c6c2a7fff","v":13},{"h":"08a6482c6c2affff","v":11},{"h":"08a6482c6c2b7fff","v":9},{"h":"08a6482c6c2c7fff","v":5},{"h":"08a6482c6c2cffff","v":10},{"h":"08a6482c6c2d7fff","v":23},{"h":"08a6482c6c2dffff","v":22},{"h":"08a6482c6c2e7fff","v":5},{"h":"08a6482c6c2effff","v":4},{"h":"08a6482c6c2f7fff","v":9},{"h":"08a6482c6c307fff","v":18},{"h":"08a6482c6c30ffff","v":47},{"h":"08a6482c6c31ffff","v":43},{"h":"08a6482c6c327fff","v":1},{"h":"08a6482c6c32ffff","v":7},{"h":"08a6482c6c34ffff","v":1},{"h":"08a6482c6c357fff","v":7},{"h":"08a6482c6c35ffff","v":5},{"h":"08a6482c6c367fff","v":4},{"h":"08a6482c6c36ffff","v":2},{"h":"08a6482c6c377fff","v":3},{"h":"08a6482c6c387fff","v":1},{"h":"08a6482c6c38ffff","v":20},{"h":"08a6482c6c39ffff","v":10},{"h":"08a6482c6c3a7fff","v":1},{"h":"08a6482c6c3affff","v":6},{"h":"08a6482c6c3b7fff","v":1},{"h":"08a6482c6c427fff","v":1},{"h":"08a6482c6c42ffff","v":1},{"h":"08a6482c6c447fff","v":1},{"h":"08a6482c6c44ffff","v":2},{"h":"08a6482c6c477fff","v":1},{"h":"08a6482c6c517fff","v":1},{"h":"08a6482c6c51ffff","v":1},{"h":"08a6482c6c537fff","v":1},{"h":"08a6482c6c617fff","v":1},{"h":"08a6482c6c627fff","v":2},{"h":"08a6482c6c62ffff","v":3},{"h":"08a6482c6c647fff","v":6},{"h":"08a6482c6c64ffff","v":1},{"h":"08a6482c6c657fff","v":2},{"h":"08a6482c6c65ffff","v":6},{"h":"08a6482c6c667fff","v":4},{"h":"08a6482c6c66ffff","v":2},{"h":"08a6482c6c677fff","v":4},{"h":"08a6482c6c68ffff","v":1},{"h":"08a6482c6c6affff","v":1},{"h":"08a6482c6c6c7fff","v":1},{"h":"08a6482c6c6d7fff","v":2},{"h":"08a6482c6c6e7fff","v":1},{"h":"08a6482c6c717fff","v":2},{"h":"08a6482c6c71ffff","v":2},{"h":"08a6482c6c747fff","v":1},{"h":"08a6482c6c74ffff","v":2},{"h":"08a6482c6c757fff","v":1},{"h":"08a6482c6c767fff","v":1},{"h":"08a6482c6c777fff","v":1},{"h":"08a6482c6c78ffff","v":1},{"h":"08a6482c6c7a7fff","v":1},{"h":"08a6482c6c7affff","v":1},{"h":"08a6482c6ca47fff","v":2},{"h":"08a6482c6ca57fff","v":2},{"h":"08a6482c6ca67fff","v":2},{"h":"08a6482c6cac7fff","v":3},{"h":"08a6482c6cadffff","v":4},{"h":"08a6482c6caeffff","v":2},{"h":"08a6482c6cb4ffff","v":1},{"h":"08a6482c6cb67fff","v":1},{"h":"08a6482c6cb6ffff","v":2},{"h":"08a6482c6d00ffff","v":1},{"h":"08a6482c6d01ffff","v":1},{"h":"08a6482c6d02ffff","v":1},{"h":"08a6482c6d047fff","v":1},{"h":"08a6482c6d05ffff","v":1},{"h":"08a6482c6d067fff","v":3},{"h":"08a6482c6d06ffff","v":1},{"h":"08a6482c6d077fff","v":2},{"h":"08a6482c6d087fff","v":1},{"h":"08a6482c6d097fff","v":1},{"h":"08a6482c6d0affff","v":1},{"h":"08a6482c6d127fff","v":2},{"h":"08a6482c6d12ffff","v":1},{"h":"08a6482c6d157fff","v":1},{"h":"08a6482c6d177fff","v":1},{"h":"08a6482c6d307fff","v":2},{"h":"08a6482c6d317fff","v":2},{"h":"08a6482c6d327fff","v":2},{"h":"08a6482c6d337fff","v":1},{"h":"08a6482c6d347fff","v":1},{"h":"08a6482c6d34ffff","v":1},{"h":"08a6482c6d367fff","v":4},{"h":"08a6482c6d36ffff","v":3},{"h":"08a6482c6d387fff","v":2},{"h":"08a6482c6d397fff","v":1},{"h":"08a6482c6d39ffff","v":2},{"h":"08a6482c6d3a7fff","v":1},{"h":"08a6482c6d3affff","v":2},{"h":"08a6482c6d407fff","v":1},{"h":"08a6482c6d417fff","v":1},{"h":"08a6482c6d41ffff","v":1},{"h":"08a6482c6d427fff","v":36},{"h":"08a6482c6d42ffff","v":34},{"h":"08a6482c6d437fff","v":1},{"h":"08a6482c6d447fff","v":33},{"h":"08a6482c6d44ffff","v":30},{"h":"08a6482c6d45ffff","v":3},{"h":"08a6482c6d467fff","v":1},{"h":"08a6482c6d477fff","v":34},{"h":"08a6482c6d48ffff","v":1},{"h":"08a6482c6d49ffff","v":1},{"h":"08a6482c6d4a7fff","v":1},{"h":"08a6482c6d4affff","v":1},{"h":"08a6482c6d517fff","v":35},{"h":"08a6482c6d51ffff","v":35},{"h":"08a6482c6d55ffff","v":1},{"h":"08a6482c6d587fff","v":4},{"h":"08a6482c6d58ffff","v":1},{"h":"08a6482c6d597fff","v":14},{"h":"08a6482c6d5a7fff","v":17},{"h":"08a6482c6d5affff","v":1},{"h":"08a6482c6d5b7fff","v":17},{"h":"08a6482c6d607fff","v":9},{"h":"08a6482c6d60ffff","v":31},{"h":"08a6482c6d617fff","v":5},{"h":"08a6482c6d61ffff","v":31},{"h":"08a6482c6d627fff","v":30},{"h":"08a6482c6d62ffff","v":30},{"h":"08a6482c6d637fff","v":7},{"h":"08a6482c6d677fff","v":2},{"h":"08a6482c6d687fff","v":3},{"h":"08a6482c6d68ffff","v":27},{"h":"08a6482c6d69ffff","v":2},{"h":"08a6482c6d6a7fff","v":2},{"h":"08a6482c6d6affff","v":4},{"h":"08a6482c6d6c7fff","v":1},{"h":"08a6482c6d6d7fff","v":18},{"h":"08a6482c6d6dffff","v":1},{"h":"08a6482c6d6e7fff","v":7},{"h":"08a6482c6d6f7fff","v":38},{"h":"08a6482c6d707fff","v":1},{"h":"08a6482c6d70ffff","v":4},{"h":"08a6482c6d717fff","v":30},{"h":"08a6482c6d71ffff","v":36},{"h":"08a6482c6d747fff","v":2},{"h":"08a6482c6d74ffff","v":3},{"h":"08a6482c6d757fff","v":6},{"h":"08a6482c6d75ffff","v":3},{"h":"08a6482c6d76ffff","v":3},{"h":"08a6482c6d787fff","v":3},{"h":"08a6482c6d78ffff","v":1},{"h":"08a6482c6d79ffff","v":2},{"h":"08a6482c6d7a7fff","v":4},{"h":"08a6482c6d7affff","v":2},{"h":"08a6482c6d80ffff","v":1},{"h":"08a6482c6d85ffff","v":1},{"h":"08a6482c6d897fff","v":2},{"h":"08a6482c6d89ffff","v":2},{"h":"08a6482c6d8c7fff","v":1},{"h":"08a6482c6d8d7fff","v":1},{"h":"08a6482c6d8dffff","v":1},{"h":"08a6482c6d8e7fff","v":2},{"h":"08a6482c6d8effff","v":2},{"h":"08a6482c6d917fff","v":1},{"h":"08a6482c6d927fff","v":1},{"h":"08a6482c6d937fff","v":1},{"h":"08a6482c6da67fff","v":1},{"h":"08a6482c6da77fff","v":1},{"h":"08a6482c6da87fff","v":2},{"h":"08a6482c6da97fff","v":3},{"h":"08a6482c6daa7fff","v":1},{"h":"08a6482c6daaffff","v":3},{"h":"08a6482c6dac7fff","v":2},{"h":"08a6482c6dad7fff","v":3},{"h":"08a6482c6dadffff","v":4},{"h":"08a6482c6daf7fff","v":4},{"h":"08a6482c6db4ffff","v":1},{"h":"08a6482c6db97fff","v":1},{"h":"08a6482c6db9ffff","v":1},{"h":"08a6482c6dbb7fff","v":1},{"h":"08a6482c6dc17fff","v":1},{"h":"08a6482c6dc27fff","v":2},{"h":"08a6482c6dc37fff","v":3},{"h":"08a6482c6dc67fff","v":1},{"h":"08a6482c6dd1ffff","v":1},{"h":"08a6482c6dd47fff","v":1},{"h":"08a6482c6dd4ffff","v":2},{"h":"08a6482c6dd57fff","v":2},{"h":"08a6482c6dd5ffff","v":1},{"h":"08a6482c6dd87fff","v":3},{"h":"08a6482c6dd8ffff","v":1},{"h":"08a6482c6dd97fff","v":3},{"h":"08a6482c6dd9ffff","v":1},{"h":"08a6482c6ddaffff","v":3},{"h":"08a6482c6e007fff","v":1},{"h":"08a6482c6e017fff","v":1},{"h":"08a6482c6e027fff","v":1},{"h":"08a6482c6e067fff","v":1},{"h":"08a6482c6e06ffff","v":1},{"h":"08a6482c6e087fff","v":2},{"h":"08a6482c6e097fff","v":14},{"h":"08a6482c6e09ffff","v":8},{"h":"08a6482c6e0a7fff","v":1},{"h":"08a6482c6e0b7fff","v":8},{"h":"08a6482c6e107fff","v":1},{"h":"08a6482c6e117fff","v":1},{"h":"08a6482c6e11ffff","v":1},{"h":"08a6482c6e127fff","v":1},{"h":"08a6482c6e137fff","v":1},{"h":"08a6482c6e157fff","v":1},{"h":"08a6482c6e15ffff","v":1},{"h":"08a6482c6e187fff","v":4},{"h":"08a6482c6e197fff","v":10},{"h":"08a6482c6e19ffff","v":6},{"h":"08a6482c6e1a7fff","v":3},{"h":"08a6482c6e1affff","v":1},{"h":"08a6482c6e1b7fff","v":8},{"h":"08a6482c6e327fff","v":1},{"h":"08a6482c6e32ffff","v":1},{"h":"08a6482c6e337fff","v":1},{"h":"08a6482c6e347fff","v":1},{"h":"08a6482c6e34ffff","v":1},{"h":"08a6482c6e367fff","v":1},{"h":"08a6482c6e377fff","v":1},{"h":"08a6482c6e42ffff","v":1},{"h":"08a6482c6e46ffff","v":9},{"h":"08a6482c6e527fff","v":9},{"h":"08a6482c6e52ffff","v":6},{"h":"08a6482c6e537fff","v":4},{"h":"08a6482c6e547fff","v":4},{"h":"08a6482c6e54ffff","v":10},{"h":"08a6482c6e557fff","v":1},{"h":"08a6482c6e55ffff","v":4},{"h":"08a6482c6e567fff","v":6},{"h":"08a6482c6e56ffff","v":12},{"h":"08a6482c6e607fff","v":1},{"h":"08a6482c6e617fff","v":1},{"h":"08a6482c6e627fff","v":11},{"h":"08a6482c6e62ffff","v":9},{"h":"08a6482c6e637fff","v":1},{"h":"08a6482c6e647fff","v":10},{"h":"08a6482c6e64ffff","v":9},{"h":"08a6482c6e667fff","v":8},{"h":"08a6482c6e66ffff","v":9},{"h":"08a6482c6e677fff","v":10},{"h":"08a6482c6e687fff","v":1},{"h":"08a6482c6e697fff","v":1},{"h":"08a6482c6e6a7fff","v":1},{"h":"08a6482c6e707fff","v":11},{"h":"08a6482c6e70ffff","v":10},{"h":"08a6482c6e717fff","v":5},{"h":"08a6482c6e71ffff","v":9},{"h":"08a6482c6e737fff","v":13},{"h":"08a6482c6e757fff","v":8},{"h":"08a6482c6e75ffff","v":8},{"h":"08a6482c6e897fff","v":6},{"h":"08a6482c6e8b7fff","v":6},{"h":"08a6482c6e987fff","v":1},{"h":"08a6482c6e997fff","v":3},{"h":"08a6482c6e99ffff","v":5},{"h":"08a6482c6e9a7fff","v":1},{"h":"08a6482c6ea4ffff","v":1},{"h":"08a6482c6eadffff","v":1},{"h":"08a6482c6ec17fff","v":6},{"h":"08a6482c6ec27fff","v":4},{"h":"08a6482c6ec37fff","v":6},{"h":"08a6482c6ec47fff","v":2},{"h":"08a6482c6ec4ffff","v":4},{"h":"08a6482c6ec5ffff","v":4},{"h":"08a6482c6ec67fff","v":1},{"h":"08a6482c6ec6ffff","v":5},{"h":"08a6482c6ec87fff","v":4},{"h":"08a6482c6ec9ffff","v":4},{"h":"08a6482c6eca7fff","v":4},{"h":"08a6482c6ecaffff","v":2},{"h":"08a6482c6ecc7fff","v":1},{"h":"08a6482c6eccffff","v":9},{"h":"08a6482c6ecd7fff","v":7},{"h":"08a6482c6ecdffff","v":10},{"h":"08a6482c6eceffff","v":1},{"h":"08a6482c6ecf7fff","v":2},{"h":"08a6482c6ed07fff","v":1},{"h":"08a6482c6ed0ffff","v":3},{"h":"08a6482c6ed1ffff","v":2},{"h":"08a6482c6ed2ffff","v":2},{"h":"08a6482c6ed4ffff","v":2},{"h":"08a6482c6ed57fff","v":2},{"h":"08a6482c6ed67fff","v":7},{"h":"08a6482c6ed6ffff","v":5},{"h":"08a6482c6ed77fff","v":8},{"h":"08a6482d0a2cffff","v":1},{"h":"08a6482d0a2dffff","v":1},{"h":"08a6482d0b507fff","v":1},{"h":"08a6482d0b51ffff","v":1},{"h":"08a6482d0b52ffff","v":1},{"h":"08a6482d0b587fff","v":1},{"h":"08a6482d0b5affff","v":1},{"h":"08a6482d0b5b7fff","v":1},{"h":"08a6482d19347fff","v":1},{"h":"08a6482d19357fff","v":1},{"h":"08a6482d1936ffff","v":1},{"h":"08a6482d1b257fff","v":1},{"h":"08a6482d1b267fff","v":1},{"h":"08a6482d1b277fff","v":1},{"h":"08a6482d1b287fff","v":1},{"h":"08a6482d1b28ffff","v":1},{"h":"08a6482d1b297fff","v":1},{"h":"08a6482d1b29ffff","v":1},{"h":"08a6482d1b2e7fff","v":1},{"h":"08a6482d1b2f7fff","v":1},{"h":"08a6482d1b34ffff","v":1},{"h":"08a6482d1b607fff","v":1},{"h":"08a6482d1b60ffff","v":1},{"h":"08a6482d1b617fff","v":1},{"h":"08a6482d1b62ffff","v":1},{"h":"08a6482d1b667fff","v":1},{"h":"08a6482d1b677fff","v":1},{"h":"08a6482d1b697fff","v":1},{"h":"08a6482d1b6a7fff","v":1},{"h":"08a6482d1b6b7fff","v":1},{"h":"08a6482d1b75ffff","v":1},{"h":"08a6482d40827fff","v":1},{"h":"08a6482d4082ffff","v":1},{"h":"08a6482d40837fff","v":1},{"h":"08a6482d40867fff","v":1},{"h":"08a6482d4095ffff","v":1},{"h":"08a6482d40987fff","v":1},{"h":"08a6482d409affff","v":1},{"h":"08a6482d409b7fff","v":1},{"h":"08a6482d40d27fff","v":1},{"h":"08a6482d41967fff","v":1},{"h":"08a6482d4196ffff","v":1},{"h":"08a6482d41a2ffff","v":1},{"h":"08a6482d41a57fff","v":1},{"h":"08a6482d41a5ffff","v":1},{"h":"08a6482d41a77fff","v":1},{"h":"08a6482d41b0ffff","v":1},{"h":"08a6482d41b27fff","v":1},{"h":"08a6482d41b2ffff","v":1},{"h":"08a6482d41b57fff","v":1},{"h":"08a6482d4469ffff","v":1},{"h":"08a6482d446cffff","v":1},{"h":"08a6482d446d7fff","v":1},{"h":"08a6482d446dffff","v":1},{"h":"08a6482d450c7fff","v":1},{"h":"08a6482d4528ffff","v":1},{"h":"08a6482d45297fff","v":1},{"h":"08a6482d4529ffff","v":1},{"h":"08a6482d452d7fff","v":1},{"h":"08a6482d452dffff","v":1},{"h":"08a6482d4548ffff","v":1},{"h":"08a6482d45497fff","v":1},{"h":"08a6482d4549ffff","v":1},{"h":"08a6482d454c7fff","v":1},{"h":"08a6482d454cffff","v":1},{"h":"08a6482d454d7fff","v":1},{"h":"08a6482d45627fff","v":1},{"h":"08a6482d4562ffff","v":1},{"h":"08a6482d45637fff","v":1},{"h":"08a6482d45667fff","v":1},{"h":"08a6482d4575ffff","v":1},{"h":"08a6482d45787fff","v":1},{"h":"08a6482d457affff","v":1},{"h":"08a6482d457b7fff","v":1},{"h":"08a6482d4680ffff","v":1},{"h":"08a6482d46817fff","v":1},{"h":"08a6482d4681ffff","v":1},{"h":"08a6482d46857fff","v":1},{"h":"08a6482d4685ffff","v":1},{"h":"08a6482d46987fff","v":1},{"h":"08a6482d4698ffff","v":1},{"h":"08a6482d469b7fff","v":1},{"h":"08a6482d46a27fff","v":1},{"h":"08a6482d46a2ffff","v":1},{"h":"08a6482d46a67fff","v":1},{"h":"08a6482d46a6ffff","v":1},{"h":"08a6482d46b1ffff","v":1},{"h":"08a6482d46b5ffff","v":1},{"h":"08a6482d46ba7fff","v":1},{"h":"08a6482d46baffff","v":1},{"h":"08a6482d48087fff","v":1},{"h":"08a6482d4808ffff","v":1},{"h":"08a6482d480a7fff","v":1},{"h":"08a6482d48187fff","v":1},{"h":"08a6482d4819ffff","v":1},{"h":"08a6482d481b7fff","v":1},{"h":"08a6482d4862ffff","v":1},{"h":"08a6482d48657fff","v":1},{"h":"08a6482d4865ffff","v":1},{"h":"08a6482d48677fff","v":1},{"h":"08a6482d4870ffff","v":1},{"h":"08a6482d48727fff","v":1},{"h":"08a6482d4872ffff","v":1},{"h":"08a6482d48757fff","v":1},{"h":"08a6482d48c2ffff","v":1},{"h":"08a6482d48c57fff","v":1},{"h":"08a6482d48c5ffff","v":1},{"h":"08a6482d48c77fff","v":1},{"h":"08a6482d48d0ffff","v":1},{"h":"08a6482d48d27fff","v":1},{"h":"08a6482d48d2ffff","v":1},{"h":"08a6482d48d57fff","v":1},{"h":"08a6482d4b047fff","v":1},{"h":"08a6482d4b04ffff","v":1},{"h":"08a6482d4b067fff","v":1},{"h":"08a6482d4b06ffff","v":1},{"h":"08a6482d4b077fff","v":1},{"h":"08a6482d4b12ffff","v":1},{"h":"08a6482d4b147fff","v":1},{"h":"08a6482d4b157fff","v":1},{"h":"08a6482d4b15ffff","v":1},{"h":"08a6482d4b177fff","v":1},{"h":"08a6482d4b207fff","v":1},{"h":"08a6482d4b217fff","v":1},{"h":"08a6482d4b21ffff","v":1},{"h":"08a6482d4b237fff","v":1},{"h":"08a6482d4b2a7fff","v":1},{"h":"08a6482d4b2c7fff","v":1},{"h":"08a6482d4b2cffff","v":1},{"h":"08a6482d4b2e7fff","v":1},{"h":"08a6482d4b2effff","v":1},{"h":"08a6482d4b317fff","v":1},{"h":"08a6482d4b34ffff","v":1},{"h":"08a6482d4b387fff","v":1},{"h":"08a6482d4b39ffff","v":1},{"h":"08a6482d4b3a7fff","v":1},{"h":"08a6482d4b3affff","v":1},{"h":"08a6482d4b88ffff","v":1},{"h":"08a6482d4b8a7fff","v":1},{"h":"08a6482d4b8affff","v":1},{"h":"08a6482d4b8d7fff","v":1},{"h":"08a6482d4b987fff","v":1},{"h":"08a6482d4b99ffff","v":1},{"h":"08a6482d4b9b7fff","v":1},{"h":"08a6482d4c42ffff","v":1},{"h":"08a6482d4c457fff","v":1},{"h":"08a6482d4c45ffff","v":1},{"h":"08a6482d4c477fff","v":1},{"h":"08a6482d4c50ffff","v":1},{"h":"08a6482d4c527fff","v":1},{"h":"08a6482d4c52ffff","v":1},{"h":"08a6482d4c557fff","v":1},{"h":"08a6482d4c687fff","v":1},{"h":"08a6482d4c68ffff","v":1},{"h":"08a6482d4c6a7fff","v":1},{"h":"08a6482d4c787fff","v":1},{"h":"08a6482d4c79ffff","v":1},{"h":"08a6482d4c7b7fff","v":1},{"h":"08a6482d4cc87fff","v":1},{"h":"08a6482d4cc8ffff","v":1},{"h":"08a6482d4cca7fff","v":1},{"h":"08a6482d4cd87fff","v":1},{"h":"08a6482d4cd9ffff","v":1},{"h":"08a6482d4cdb7fff","v":1},{"h":"08a6482d6a487fff","v":1},{"h":"08a6482d6a48ffff","v":1},{"h":"08a6482d6a4b7fff","v":1},{"h":"08a6482d71687fff","v":1},{"h":"08a6482d7168ffff","v":1},{"h":"08a6482d71697fff","v":1},{"h":"08a6482d716c7fff","v":1},{"h":"08a6482d716cffff","v":1},{"h":"08a6482d716f7fff","v":1},{"h":"08a6482d72407fff","v":1},{"h":"08a6482d7310ffff","v":1},{"h":"08a6482d7311ffff","v":1},{"h":"08a6482d73147fff","v":1},{"h":"08a6482d73157fff","v":1},{"h":"08a6482d7316ffff","v":1},{"h":"08a6482d731a7fff","v":1},{"h":"08a6482d731affff","v":1},{"h":"08a6482d731b7fff","v":1},{"h":"08a6482d73537fff","v":1},{"h":"08a6482d73a07fff","v":1},{"h":"08a6482d73a17fff","v":1},{"h":"08a6482d73a2ffff","v":1},{"h":"08a6482d73b4ffff","v":1},{"h":"08a6482d73b5ffff","v":1},{"h":"08a6482d73b8ffff","v":1},{"h":"08a6482d73b9ffff","v":1},{"h":"08a6482da8827fff","v":1},{"h":"08a6482da882ffff","v":1},{"h":"08a6482da8847fff","v":1},{"h":"08a6482da884ffff","v":1},{"h":"08a6482da8877fff","v":1},{"h":"08a6482da8917fff","v":1},{"h":"08a6482da891ffff","v":1},{"h":"08a6482da8937fff","v":1},{"h":"08a6482da89a7fff","v":1},{"h":"08a6482da89affff","v":1},{"h":"08a6482da8a27fff","v":1},{"h":"08a6482da8a2ffff","v":1},{"h":"08a6482da8a47fff","v":1},{"h":"08a6482da8a5ffff","v":1},{"h":"08a6482da8a77fff","v":1},{"h":"08a6482da8b07fff","v":1},{"h":"08a6482da8b0ffff","v":1},{"h":"08a6482da8b17fff","v":1},{"h":"08a6482da8b57fff","v":1},{"h":"08a6482da9127fff","v":1},{"h":"08a6482da912ffff","v":1},{"h":"08a6482da9137fff","v":1},{"h":"08a6482da98cffff","v":1},{"h":"08a6482da98dffff","v":1},{"h":"08a6482da9a07fff","v":1},{"h":"08a6482da9a0ffff","v":1},{"h":"08a6482da9a37fff","v":1},{"h":"08a6482da9a57fff","v":1},{"h":"08a6482da9a5ffff","v":1},{"h":"08a6482da9b87fff","v":1},{"h":"08a6482da9b8ffff","v":1},{"h":"08a6482da9b97fff","v":1},{"h":"08a6482da9c27fff","v":1},{"h":"08a6482da9c2ffff","v":1},{"h":"08a6482da9c67fff","v":1},{"h":"08a6482da9c6ffff","v":1},{"h":"08a6482da9d1ffff","v":1},{"h":"08a6482da9d5ffff","v":1},{"h":"08a6482da9da7fff","v":1},{"h":"08a6482da9daffff","v":1},{"h":"08a6482dac297fff","v":1},{"h":"08a6482dac407fff","v":1},{"h":"08a6482dac427fff","v":1},{"h":"08a6482dac42ffff","v":1},{"h":"08a6482dac437fff","v":1},{"h":"08a6482dac447fff","v":1},{"h":"08a6482dac44ffff","v":1},{"h":"08a6482dac477fff","v":1},{"h":"08a6482dac507fff","v":1},{"h":"08a6482dac51ffff","v":1},{"h":"08a6482dac527fff","v":1},{"h":"08a6482dac537fff","v":1},{"h":"08a6482dac5affff","v":1},{"h":"08a6482dac64ffff","v":1},{"h":"08a6482dac66ffff","v":1},{"h":"08a6482dac707fff","v":1},{"h":"08a6482dac70ffff","v":1},{"h":"08a6482dac717fff","v":1},{"h":"08a6482dac747fff","v":1},{"h":"08a6482dac74ffff","v":1},{"h":"08a6482dac757fff","v":1},{"h":"08a6482dac767fff","v":1},{"h":"08a6482dac777fff","v":1},{"h":"08a6482dacc8ffff","v":1},{"h":"08a6486285907fff","v":1},{"h":"08a648628590ffff","v":1},{"h":"08a6486285917fff","v":1},{"h":"08a6486285967fff","v":1},{"h":"08a6486285977fff","v":1},{"h":"08a64862859a7fff","v":1},{"h":"08a64862a365ffff","v":1},{"h":"08a64862a36c7fff","v":1},{"h":"08a64862a36effff","v":1},{"h":"08a64862a36f7fff","v":1},{"h":"08a648674981ffff","v":1},{"h":"08a64a4829417fff","v":1},{"h":"08a64a4829427fff","v":1},{"h":"08a64a4829437fff","v":1},{"h":"08a64a482948ffff","v":1},{"h":"08a64a48294affff","v":1},{"h":"08a64a482950ffff","v":1},{"h":"08a64a4829567fff","v":1},{"h":"08a64a48298dffff","v":1},{"h":"08a64a482ba27fff","v":1},{"h":"08a64a482ba77fff","v":1},{"h":"08a64a482bb0ffff","v":1},{"h":"08a64a482bb27fff","v":1},{"h":"08a64a482bb2ffff","v":1},{"h":"08a64a482bb57fff","v":1},{"h":"08a64a4840427fff","v":1},{"h":"08a64a484042ffff","v":1},{"h":"08a64a4840447fff","v":1},{"h":"08a64a484044ffff","v":1},{"h":"08a64a4840477fff","v":1},{"h":"08a64a4840517fff","v":1},{"h":"08a64a484051ffff","v":1},{"h":"08a64a4840537fff","v":1},{"h":"08a64a484062ffff","v":2},{"h":"08a64a4840657fff","v":1},{"h":"08a64a484065ffff","v":1},{"h":"08a64a4840677fff","v":1},{"h":"08a64a484070ffff","v":1},{"h":"08a64a4840717fff","v":1},{"h":"08a64a484071ffff","v":1},{"h":"08a64a4840757fff","v":1},{"h":"08a64a4843807fff","v":1},{"h":"08a64a484380ffff","v":1},{"h":"08a64a4843837fff","v":1},{"h":"08a64a4843847fff","v":1},{"h":"08a64a484384ffff","v":1},{"h":"08a64a4843857fff","v":2},{"h":"08a64a4843987fff","v":1},{"h":"08a64a484398ffff","v":1},{"h":"08a64a48439b7fff","v":1},{"h":"08a64a4843a67fff","v":1},{"h":"08a64a4843b07fff","v":1},{"h":"08a64a4843b0ffff","v":1},{"h":"08a64a4843b37fff","v":1},{"h":"08a64a4843b57fff","v":1},{"h":"08a64a4843b5ffff","v":1},{"h":"08a64a4846067fff","v":1},{"h":"08a64a484606ffff","v":1},{"h":"08a64a4846107fff","v":1},{"h":"08a64a484610ffff","v":1},{"h":"08a64a4846137fff","v":1},{"h":"08a64a4846157fff","v":1},{"h":"08a64a484615ffff","v":1},{"h":"08a64a4846267fff","v":1},{"h":"08a64a484626ffff","v":1},{"h":"08a64a4846307fff","v":1},{"h":"08a64a484630ffff","v":1},{"h":"08a64a4846337fff","v":1},{"h":"08a64a4846357fff","v":1},{"h":"08a64a484635ffff","v":1},{"h":"08a64a4846897fff","v":1},{"h":"08a64a484689ffff","v":1},{"h":"08a64a4846c67fff","v":1},{"h":"08a64a4846c6ffff","v":1},{"h":"08a64a4846d27fff","v":1},{"h":"08a64a4846d2ffff","v":1},{"h":"08a64a4846d4ffff","v":1},{"h":"08a64a4846d57fff","v":1},{"h":"08a64a4846d5ffff","v":1},{"h":"08a64a4846d77fff","v":1},{"h":"08a64a484a847fff","v":1},{"h":"08a64a484a84ffff","v":1},{"h":"08a64a484a867fff","v":1},{"h":"08a64a484a90ffff","v":1},{"h":"08a64a484a927fff","v":1},{"h":"08a64a484a92ffff","v":1},{"h":"08a64a484a937fff","v":1},{"h":"08a64a484a957fff","v":1},{"h":"08a64a484a95ffff","v":1},{"h":"08a64a484aa07fff","v":1},{"h":"08a64a484aa0ffff","v":1},{"h":"08a64a484aa37fff","v":1},{"h":"08a64a484aa47fff","v":1},{"h":"08a64a484aa4ffff","v":1},{"h":"08a64a484aa57fff","v":1},{"h":"08a64a484ab17fff","v":1},{"h":"08a64a484ab1ffff","v":1},{"h":"08a64a484b067fff","v":1},{"h":"08a64a484b06ffff","v":1},{"h":"08a64a484b10ffff","v":1},{"h":"08a64a484b127fff","v":1},{"h":"08a64a484b12ffff","v":1},{"h":"08a64a484b157fff","v":1},{"h":"08a64a484b15ffff","v":1},{"h":"08a64a484b177fff","v":1},{"h":"08a64a484b22ffff","v":1},{"h":"08a64a484b247fff","v":1},{"h":"08a64a484b24ffff","v":1},{"h":"08a64a484b277fff","v":1},{"h":"08a64a484b307fff","v":1},{"h":"08a64a484b30ffff","v":1},{"h":"08a64a484b337fff","v":1},{"h":"08a64a484b357fff","v":1},{"h":"08a64a484b897fff","v":1},{"h":"08a64a484b89ffff","v":1},{"h":"08a64a484bc67fff","v":1},{"h":"08a64a484bd0ffff","v":1},{"h":"08a64a484bd17fff","v":1},{"h":"08a64a484bd1ffff","v":1},{"h":"08a64a484bd57fff","v":1},{"h":"08a64a484bd5ffff","v":1},{"h":"08a64a484e0a7fff","v":1},{"h":"08a64a484e0affff","v":1},{"h":"08a64a484e187fff","v":1},{"h":"08a64a484e18ffff","v":1},{"h":"08a64a484e1a7fff","v":1},{"h":"08a64a484e297fff","v":1},{"h":"08a64a484e29ffff","v":2},{"h":"08a64a484e74ffff","v":1},{"h":"08a64a484e767fff","v":1},{"h":"08a64a484e76ffff","v":1},{"h":"08a64a484ec47fff","v":1},{"h":"08a64a484ec5ffff","v":1},{"h":"08a64a4870097fff","v":2},{"h":"08a64a487009ffff","v":1},{"h":"08a64a4870297fff","v":1},{"h":"08a64a487029ffff","v":1},{"h":"08a64a4870527fff","v":1},{"h":"08a64a487052ffff","v":1},{"h":"08a64a4870547fff","v":1},{"h":"08a64a487054ffff","v":1},{"h":"08a64a4870577fff","v":1},{"h":"08a64a4870727fff","v":1},{"h":"08a64a487072ffff","v":1},{"h":"08a64a4870747fff","v":1},{"h":"08a64a487074ffff","v":1},{"h":"08a64a4870777fff","v":1},{"h":"08a64a4870c9ffff","v":1},{"h":"08a64a4871697fff","v":1},{"h":"08a64a487169ffff","v":1},{"h":"08a64a4873927fff","v":1},{"h":"08a64a487392ffff","v":1},{"h":"08a64a4873947fff","v":1},{"h":"08a64a4873b47fff","v":1},{"h":"08a64a4873b4ffff","v":1},{"h":"08a64a4874cb7fff","v":1},{"h":"08a64a487612ffff","v":1},{"h":"08a64a4876147fff","v":1},{"h":"08a64a487614ffff","v":1},{"h":"08a64a4876177fff","v":1},{"h":"08a64a4876327fff","v":1},{"h":"08a64a4876a97fff","v":1},{"h":"08a64a495a187fff","v":1},{"h":"08a64a495a19ffff","v":1},{"h":"08a64a495a1b7fff","v":1},{"h":"08a64a495a54ffff","v":1},{"h":"08a64a495a56ffff","v":1},{"h":"08a64a495a89ffff","v":1},{"h":"08a64a495ac2ffff","v":1},{"h":"08a64a495ac47fff","v":1},{"h":"08a64a495ac57fff","v":2},{"h":"08a64a495ac5ffff","v":1},{"h":"08a64a495ac6ffff","v":1},{"h":"08a64a495ac77fff","v":1},{"h":"08a64a495aceffff","v":2},{"h":"08a64a4b10107fff","v":2},{"h":"08a64a4b10117fff","v":2},{"h":"08a64a4b10127fff","v":2},{"h":"08a64a4b10187fff","v":2},{"h":"08a64a4b10197fff","v":1},{"h":"08a64a4b1019ffff","v":1},{"h":"08a64a4b101a7fff","v":1},{"h":"08a64a4b101affff","v":1},{"h":"08a64a4b10407fff","v":2},{"h":"08a64a4b10417fff","v":2},{"h":"08a64a4b1042ffff","v":2},{"h":"08a64a4b10487fff","v":2},{"h":"08a64a4b10497fff","v":1},{"h":"08a64a4b1049ffff","v":1},{"h":"08a64a4b104a7fff","v":1},{"h":"08a64a4b104affff","v":1},{"h":"08a64a4b10547fff","v":2},{"h":"08a64a4b10557fff","v":2},{"h":"08a64a4b1055ffff","v":1},{"h":"08a64a4b1056ffff","v":2},{"h":"08a64a4b10847fff","v":2},{"h":"08a64a4b10857fff","v":2},{"h":"08a64a4b10867fff","v":2},{"h":"08a64a4b108c7fff","v":2},{"h":"08a64a4b108d7fff","v":2},{"h":"08a64a4b108e7fff","v":1},{"h":"08a64a4b108effff","v":1},{"h":"08a64a4b12107fff","v":1},{"h":"08a64a4b12117fff","v":1},{"h":"08a64a4b12127fff","v":1},{"h":"08a64a4b12197fff","v":1},{"h":"08a64a4b121a7fff","v":2},{"h":"08a64a4b121b7fff","v":2},{"h":"08a64a4b12437fff","v":1},{"h":"08a64a4b1250ffff","v":1},{"h":"08a64a4b12517fff","v":1},{"h":"08a64a4b1251ffff","v":1},{"h":"08a64a4b12537fff","v":1},{"h":"08a64a4b12567fff","v":1},{"h":"08a64a4b12577fff","v":1},{"h":"08a64a4b12587fff","v":1},{"h":"08a64a4b1258ffff","v":1},{"h":"08a64a4b12597fff","v":1},{"h":"08a64a4b1259ffff","v":1},{"h":"08a64a4b125a7fff","v":1},{"h":"08a64a4b12847fff","v":2},{"h":"08a64a4b12857fff","v":1},{"h":"08a64a4b1286ffff","v":2},{"h":"08a64a4b128c7fff","v":1},{"h":"08a64a4b128d7fff","v":1},{"h":"08a64a4b128effff","v":1},{"h":"08a64a4b12c87fff","v":1},{"h":"08a64a4b12c8ffff","v":1},{"h":"08a64a4b12cb7fff","v":1},{"h":"08a64a4b12ccffff","v":1},{"h":"08a64a4b12cd7fff","v":1},{"h":"08a64a4b12cdffff","v":1},{"h":"08a64a4b12d97fff","v":1},{"h":"08a64a4b12d9ffff","v":1},{"h":"08a64a4b12db7fff","v":1},{"h":"08a64a4b14267fff","v":1},{"h":"08a64a4b1426ffff","v":1},{"h":"08a64a4b14277fff","v":1},{"h":"08a64a4b1434ffff","v":1},{"h":"08a64a4b1436ffff","v":1},{"h":"08a64a4b14a57fff","v":1},{"h":"08a64a4b14a5ffff","v":1},{"h":"08a64a4b14aeffff","v":1},{"h":"08a64a4b15417fff","v":1},{"h":"08a64a4b15437fff","v":2},{"h":"08a64a4b15487fff","v":1},{"h":"08a64a4b15497fff","v":2},{"h":"08a64a4b154a7fff","v":2},{"h":"08a64a4b154b7fff","v":1},{"h":"08a64a4b15507fff","v":1},{"h":"08a64a4b1550ffff","v":1},{"h":"08a64a4b1551ffff","v":2},{"h":"08a64a4b15527fff","v":1},{"h":"08a64a4b1552ffff","v":2},{"h":"08a64a4b15537fff","v":1},{"h":"08a64a4b1558ffff","v":1},{"h":"08a64a4b15c1ffff","v":1},{"h":"08a64a4b15ca7fff","v":1},{"h":"08a64a4b15caffff","v":1},{"h":"08a64a4b15cb7fff","v":2},{"h":"08a64a4b15cc7fff","v":1},{"h":"08a64a4b15cd7fff","v":1},{"h":"08a64a4b15ce7fff","v":1},{"h":"08a64a4b15d87fff","v":2},{"h":"08a64a4b15d97fff","v":2},{"h":"08a64a4b15d9ffff","v":1},{"h":"08a64a4b15da7fff","v":1},{"h":"08a64a4b15db7fff","v":1},{"h":"08a64a4b16417fff","v":1},{"h":"08a64a4b164affff","v":1},{"h":"08a64a4b164d7fff","v":1},{"h":"08a64a4b164dffff","v":1},{"h":"08a64a4b164f7fff","v":1},{"h":"08a64a4b1658ffff","v":1},{"h":"08a64a4b165a7fff","v":1},{"h":"08a64a4b165affff","v":1},{"h":"08a64a4b8050ffff","v":1},{"h":"08a64a4b80527fff","v":1},{"h":"08a64a4b8052ffff","v":1},{"h":"08a64a4b80577fff","v":1},{"h":"08a64a4b80837fff","v":1},{"h":"08a64a4b80897fff","v":1},{"h":"08a64a4b808a7fff","v":1},{"h":"08a64a4b808b7fff","v":1},{"h":"08a64a4b80907fff","v":1},{"h":"08a64a4b8091ffff","v":1},{"h":"08a64a4b80927fff","v":1},{"h":"08a64a4b8098ffff","v":1},{"h":"08a64a4b8099ffff","v":1},{"h":"08a64a4b809affff","v":1},{"h":"08a64a4b80c47fff","v":1},{"h":"08a64a4b80c57fff","v":1},{"h":"08a64a4b80c5ffff","v":1},{"h":"08a64a4b80c67fff","v":1},{"h":"08a64a4b80c87fff","v":1},{"h":"08a64a4b80c97fff","v":1},{"h":"08a64a4b80c9ffff","v":1},{"h":"08a64a4b80caffff","v":1},{"h":"08a64a4b80cb7fff","v":1},{"h":"08a64a4b80ccffff","v":1},{"h":"08a64a4b80cdffff","v":1},{"h":"08a64a4b80ce7fff","v":1},{"h":"08a64a4b80ceffff","v":1},{"h":"08a64a4b80cf7fff","v":1},{"h":"08a64a4b80d4ffff","v":1},{"h":"08a64a4b80d87fff","v":1},{"h":"08a64a4b80d8ffff","v":1},{"h":"08a64a4b80d97fff","v":1},{"h":"08a64a4b80d9ffff","v":1},{"h":"08a64a4b84217fff","v":1},{"h":"08a64a4b84237fff","v":1},{"h":"08a64a4b8428ffff","v":1},{"h":"08a64a4b842affff","v":1},{"h":"08a64a4b84307fff","v":1},{"h":"08a64a4b8431ffff","v":1},{"h":"08a64a4b84327fff","v":1},{"h":"08a64a4b84337fff","v":1},{"h":"08a64a4b8484ffff","v":1},{"h":"08a64a4b84867fff","v":1},{"h":"08a64a4b8486ffff","v":1},{"h":"08a64a4b8494ffff","v":1},{"h":"08a64a4b84967fff","v":1},{"h":"08a64a4b8496ffff","v":1},{"h":"08a64a4b84a87fff","v":1},{"h":"08a64a4b84a9ffff","v":1},{"h":"08a64a4b84aa7fff","v":1},{"h":"08a64a4b84b17fff","v":1},{"h":"08a64a4b84b87fff","v":1},{"h":"08a64a4b84b8ffff","v":1},{"h":"08a64a4b84ba7fff","v":1},{"h":"08a64a4b84baffff","v":1},{"h":"08a64a4b86347fff","v":1},{"h":"08a64a4b8634ffff","v":1},{"h":"08a64a4b86367fff","v":1},{"h":"08a64a4b86377fff","v":1},{"h":"08a64a4b86acffff","v":1},{"h":"08a64a4b86adffff","v":1},{"h":"08a64a4ba065ffff","v":1},{"h":"08a64a4ba06c7fff","v":1},{"h":"08a64a4ba06cffff","v":1},{"h":"08a64a4ba06d7fff","v":1},{"h":"08a64a4ba06effff","v":1},{"h":"08a64a4ba1507fff","v":1},{"h":"08a64a4ba1517fff","v":1},{"h":"08a64a4ba1527fff","v":1},{"h":"08a64a4ba1587fff","v":1},{"h":"08a64a4ba1597fff","v":1},{"h":"08a64a4ba15affff","v":1},{"h":"08a64a4ba1807fff","v":1},{"h":"08a64a4ba1817fff","v":1},{"h":"08a64a4ba181ffff","v":1},{"h":"08a64a4ba182ffff","v":1},{"h":"08a64a4ba1887fff","v":1},{"h":"08a64a4ba1897fff","v":1},{"h":"08a64a4ba18affff","v":1},{"h":"08a64a4ba1947fff","v":1},{"h":"08a64a4ba194ffff","v":1},{"h":"08a64a4ba195ffff","v":1},{"h":"08a64a4ba196ffff","v":1},{"h":"08a64a4ba1c47fff","v":1},{"h":"08a64a4ba1c57fff","v":1},{"h":"08a64a4ba1c6ffff","v":1},{"h":"08a64a4ba1cc7fff","v":1},{"h":"08a64a4ba1cd7fff","v":1},{"h":"08a64a4ba1ce7fff","v":1},{"h":"08a64a4ba2247fff","v":1},{"h":"08a64a4ba2257fff","v":1},{"h":"08a64a4ba2267fff","v":1},{"h":"08a64a4ba2277fff","v":1},{"h":"08a64a4ba22cffff","v":1},{"h":"08a64a4ba22effff","v":1},{"h":"08a64a4ba234ffff","v":1},{"h":"08a64a4ba236ffff","v":1},{"h":"08a64a4ba3497fff","v":1},{"h":"08a64a4ba3597fff","v":1},{"h":"08a64a4ba3907fff","v":1},{"h":"08a64a4ba390ffff","v":1},{"h":"08a64a4ba3917fff","v":1},{"h":"08a64a4ba392ffff","v":1},{"h":"08a64a4ba3967fff","v":1},{"h":"08a64a4ba3977fff","v":1},{"h":"08a64a4ba39a7fff","v":1},{"h":"08a64a4ba39b7fff","v":1},{"h":"08a64a4ba3d07fff","v":1},{"h":"08a64a4ba3d17fff","v":1},{"h":"08a64a4ba3d27fff","v":1},{"h":"08a64a4ba3d2ffff","v":1},{"h":"08a64a4ba3d87fff","v":1},{"h":"08a64a4ba3d9ffff","v":1},{"h":"08a64a4ba3daffff","v":1},{"h":"08a64a4ba5a47fff","v":1},{"h":"08a64a4ba5a5ffff","v":1},{"h":"08a64a4ba5a77fff","v":1},{"h":"08a64a4ba5b0ffff","v":1},{"h":"08a64a4ba5b2ffff","v":1},{"h":"08a64a4ba5b57fff","v":2},{"h":"08a64a4ba5b5ffff","v":1},{"h":"08a64a4ba5b77fff","v":1},{"h":"08a64acc98567fff","v":1}]</script>
+
+<script src="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/h3-js@4.1.0/dist/h3-js.umd.js"></script>
+<script src="https://unpkg.com/deck.gl@9.0.30/dist.min.js"></script>
+<script src="https://unpkg.com/d3@7.9.0/dist/d3.min.js"></script>
+
+<script>
+(function () {
+  'use strict';
+
+  // ---------- Turbo colormap (D3 d3-scale-chromatic interpolateTurbo) ----------
+  // Polynomial fit from Google's Turbo. Returns [r,g,b] in 0-255.
+  function turbo(t) {
+    t = Math.max(0, Math.min(1, t));
+    const r = 34.61 + t * (1172.33 - t * (10793.56 - t * (33300.12 - t * (38394.49 - t * 14825.05))));
+    const g = 23.31 + t * (557.33 + t * (1225.33 - t * (3574.96 - t * (1073.77 + t * 707.56))));
+    const b = 27.2 + t * (3211.1 - t * (15327.97 - t * (27814.0 - t * (22569.18 - t * 6838.66))));
+    return [
+      Math.max(0, Math.min(255, Math.round(r))),
+      Math.max(0, Math.min(255, Math.round(g))),
+      Math.max(0, Math.min(255, Math.round(b))),
+    ];
+  }
+
+  // ---------- load embedded data ----------
+  // The CSV writes H3 cell IDs in 16-char form with a leading zero
+  // (e.g. '08a6482136d0ffff'); h3-js's latLngToCell returns the canonical
+  // 15-char form without the leading zero. Same cell, different string,
+  // normalise everything to the canonical form so string-keyed lookups match.
+  const normCell = (s) => s.replace(/^0+/, '');
+
+  const RAW = JSON.parse(document.getElementById('bump-data').textContent)
+    .map(d => ({ h: normCell(d.h), v: d.v }));
+  console.log('Bump data:', RAW.length, 'hexes');
+
+  // precompute parent cells for each lower resolution so res-slider is snappy
+  const RES_NATIVE = 10;
+  const PARENT_CACHE = {};
+  for (let r = 5; r <= 10; r++) {
+    if (r === RES_NATIVE) {
+      PARENT_CACHE[r] = RAW.map(d => ({ h: d.h, v: d.v }));
+    } else {
+      const agg = new Map();
+      for (const d of RAW) {
+        const parent = h3.cellToParent(d.h, r);
+        agg.set(parent, (agg.get(parent) || 0) + d.v);
+      }
+      PARENT_CACHE[r] = Array.from(agg, ([h, v]) => ({ h, v }));
+    }
+  }
+
+  // ---------- default camera (used on 'All' / load) ----------
+  const DEFAULT_CAMERA = { center: [98.9853, 18.7883], zoom: 11.4, pitch: 52, bearing: -18 };
+
+  // ---------- categories (primary filter; auto-classified by name) ----------
+  // 8 categories. Each place is classified into exactly one by walking the
+  // rules below in order — first match wins. Tuned by hand against the 87
+  // place names in places_87.csv.
+  const CATS = {
+    home:     { emoji: '🏡', label: 'Home',     color: '#ff8a4d', rgb: [255,138, 77] },
+    cafe:     { emoji: '☕', label: 'Cafe',     color: '#d2a679', rgb: [210,166,121] },
+    work:     { emoji: '💼', label: 'Work',     color: '#5fa8e8', rgb: [ 95,168,232] },
+    hike:     { emoji: '🥾', label: 'Hike',     color: '#7ac66e', rgb: [122,198,110] },
+    food:     { emoji: '🍜', label: 'Food',     color: '#ff6b9c', rgb: [255,107,156] },
+    travel:   { emoji: '✈️', label: 'Travel',   color: '#62e3ff', rgb: [ 98,227,255] },
+    wellness: { emoji: '💆', label: 'Wellness', color: '#b28af7', rgb: [178,138,247] },
+    study:    { emoji: '📚', label: 'Study',    color: '#f0d75e', rgb: [240,215, 94] },
+  };
+  const CAT_ORDER = ['home','cafe','work','hike','food','travel','wellness','study'];
+
+  const CAT_RULES = [
+    { cat: 'home',     rx: /Punna Residence|Punna 5|condo|apartment/i },
+    { cat: 'travel',   rx: /Airport|Suvarnabhumi|Don Mueang|Lounge|Resort|Hotel| Inn |^Inn |BTS|Marisa|Bulunburi|Premier Lounge|Lodge|\bVilla\b|Hostel|Homestay|โฮมสเตย์|Embassy|Pool Villa|Wealth Pool/i },
+    { cat: 'wellness', rx: /Massage|Sauna|Spa|Dance|Yoga|Meditation|Gym|Fitness|Wellness|Snooze|Eudemonia|Lanna Meditation|Northlab|Pole|Hospital|Sports Club|Ice Bath|นวด/i },
+    { cat: 'hike',     rx: /\bDoi\b|National Park|Sanctuary|Park|Royal Flora|Elephant|Chomnok|ม่อนผา|วัด|Temple|Cave|Mountain|Flower Festival|Feel Garden|หอพระแก้ว/i },
+    { cat: 'study',    rx: /\bCMU\b|มช\.?|University|Chulalongkorn|Faculty|Foundation|Child.?s Dream|Library|Immigration|Embassy|ศูนย์อาหาร CMU/i },
+    { cat: 'work',     rx: /\bChoei\b|Coworking|Wikunpanich|\bSalapo\b|^Office\b/i },
+    { cat: 'cafe',     rx: /Cafe|Café|Caf[eé]|Coffee|\bTea\b|Espresso|Matcha|Bays|^Pine|Cloud Coffee|Fohhide|Red Panda|Coco Club|Praise|Dream Cafe|Sinners|MmD|TATA|Pai coffee|Flaneur|Jai Pang|Much Room|MAYA|Myst|Mellow|Wailai|Rich Mellow|คาเฟ่|กาแฟ|บ้านชา|อาวน์ชา|Dreamscape|Firefly|The .?90s/i },
+    { cat: 'food',     rx: /Restaurant|Bonchon|Rice|Noodle|Sushi|Grill|Kitchen|Burger|Yakiniku|Bistro|\bBar\b|Pub|Jazz Club|ข้าว|ก๋วย|อาหาร|ครัว|หม่าล่า|ปัง|สุกี้|หมูกระทะ|ขนม|ทุเรียน|Healthy Junk|Egyptian|Delhi Street|Pai Siam|Beast|Boat Chaingmai|Rotniyom|Little Village|Finn Crêpe/i },
+  ];
+
+  function classifyPlace(name) {
+    if (!name) return 'food';
+    for (const r of CAT_RULES) {
+      if (r.rx.test(name)) return r.cat;
+    }
+    return 'food'; // safe fallback (everything else looks like a snack or meal in this dataset)
+  }
+
+  // ---------- the four mes ----------
+  // Each persona has a story + a list of key place names. Names are matched
+  // case-insensitively against PLACES[].n via substring; the first match wins.
+  // Missing names are surfaced in the UI so I know what's not in my Bump tags.
+  const PERSONAS = {
+    home: {
+      title: 'Home Me',
+      icon: '🏡',
+      tagline: 'My daily anchor,the tight triangle of home, work, and dance',
+      body: "On a typical day, I move between three anchors: Punna Residence 5 (home), Choei (my office above the cafe), and Northlab Dance Studio. This triangle,under 2 km across,represents 80% of my daily life. Home Me is productive, grounded, and a beautiful creature of habit.",
+      places: [
+        { label: 'Punna Residence 5 (home)',         icon: '🏠', match: 'Punna Residence 5' },
+        { label: 'Choei (my office above the cafe)', icon: '☕', match: 'Choei' },
+        { label: 'Northlab Dance Studio',            icon: '💃', match: 'Northlab Dance Studio' },
+        { label: 'CNX Pole',                         icon: '🪩', match: 'CNX Pole' },
+        { label: 'Snooze Massage CNX',               icon: '💆', match: 'Snooze Massage CNX' },
+        { label: 'The Old City Spa & Sauna',         icon: '🧖', match: 'The Old City Spa' },
+        { label: 'The Coco Club',                    icon: '🍸', match: 'The Coco Club' },
+        { label: 'Hello Mao Cat Cafe',               icon: '🐱', match: 'Hello Mao' },
+      ],
+    },
+    adventure: {
+      title: 'Adventure Me',
+      icon: '🌿',
+      tagline: "Northern Thailand's mountains, parks, and hidden roads",
+      body: "When I escape, I go north and up. Doi Suthep is my closest mountain. Doi Inthanon is the highest peak in Thailand. The Samoeng Loop is a classic mountain cycling route. Chiang Dao has caves and limestone cliffs. Adventure Me collects elevation, not coffee receipts.",
+      places: [
+        { label: 'Doi Suthep-Pui National Park',     icon: '⛰️', match: 'Doi Suthep-Pui National Park' },
+        { label: 'แวะเต๊อะ ม่อนผาโค้ง',                icon: '🏔️', match: 'ม่อนผาโค้ง' },
+        { label: 'Joy Elephant Sanctuary',           icon: '🐘', match: 'Joy Elephant' },
+        { label: 'Chomnok Chommai',                  icon: '🌿', match: 'Chomnok Chommai' },
+        { label: 'Royal Flora Ratchaphruek Park',    icon: '🌸', match: 'Royal Flora' },
+      ],
+    },
+    traveler: {
+      title: 'Traveler Me',
+      icon: '✈️',
+      tagline: 'Bangkok, Pai, Budapest, Chiang Rai, and beyond',
+      body: "Some days the city isn't enough. Bangkok for work and the energy of 10 million people. Pai for mountain air and a slower pace. And then,Budapest. Thermal baths, ruin bars, Szentendre by the river. Traveler Me exists to be surprised.",
+      places: [
+        { label: 'Chiang Mai International Airport', icon: '✈️', match: 'Chiang Mai International Airport' },
+        { label: 'Suvarnabhumi Airport (Bangkok)',   icon: '✈️', match: 'Suvarnabhumi Airport' },
+        { label: 'Bulunburi Pai Resort',             icon: '🏞️', match: 'Bulunburi Pai Resort' },
+        { label: 'Go Inn Silom BTS (Bangkok)',       icon: '🏙️', match: 'Go Inn Silom' },
+        { label: 'Marisa Resort & Spa Chiang Dao',   icon: '🏔️', match: 'Marisa Resort' },
+      ],
+    },
+    student: {
+      title: 'Student Me',
+      icon: '🎓',
+      tagline: 'CMU campus cafes and learning everywhere in Chiang Mai',
+      body: "CMU,Chiang Mai University,shapes my geography. The cafes near campus are where ideas happen over iced coffee. Red Panda is right outside the university gate (หน้ามช.). Student Me blurs the line between work, study, and just sitting with a good book.",
+      places: [
+        { label: 'I LOVE COFFEE ศูนย์อาหาร CMU',       icon: '☕', match: 'I LOVE COFFEE' },
+        { label: 'Red Panda Cafè (หน้ามช.)',          icon: '🧋', match: 'Red Panda' },
+        { label: 'Choei (office + thinking space)',  icon: '☕', match: 'Choei' },
+        { label: 'Lanna Meditation Sanctuary',       icon: '🧘', match: 'Lanna Meditation' },
+        { label: "Child's Dream Foundation",         icon: '📚', match: 'Child' },
+        { label: 'Cloud Coffee',                     icon: '☁️', match: 'Cloud Coffee' },
+        { label: 'Pine Cafe',                        icon: '🌲', match: 'Pine Cafe' },
+        { label: 'The Coco Club',                    icon: '🍸', match: 'The Coco Club' },
+        { label: 'Bays Coffee Co.',                  icon: '☕', match: 'bays coffee' },
+        { label: 'Feel Garden Chiang Mai',           icon: '🌿', match: 'Feel Garden' },
+        { label: 'Fohhide',                          icon: '🥐', match: 'Fohhide' },
+      ],
+    },
+  };
+
+  // (Persona-to-PLACES resolution happens below, after PLACES is built.)
+
+  // ---------- tagged places ----------
+  const PLACES = JSON.parse(document.getElementById('places-data').textContent);
+  // precompute each place's H3 cell at every resolution we render at; also
+  // assign a category (used by the left panel filter + bubble color).
+  for (const p of PLACES) {
+    p.cell = {};
+    for (let r = 5; r <= 10; r++) {
+      p.cell[r] = h3.latLngToCell(p.lat, p.lng, r);
+    }
+    p.cat = classifyPlace(p.n);
+  }
+  // counts per category — used to populate the left panel
+  const CAT_COUNTS = {};
+  for (const k of CAT_ORDER) CAT_COUNTS[k] = 0;
+  for (const p of PLACES) CAT_COUNTS[p.cat] = (CAT_COUNTS[p.cat] || 0) + 1;
+  // index: cell-id -> list of places at each resolution
+  const PLACES_BY_CELL = {};
+  for (let r = 5; r <= 10; r++) {
+    const idx = new Map();
+    for (const p of PLACES) {
+      const k = p.cell[r];
+      if (!idx.has(k)) idx.set(k, []);
+      idx.get(k).push(p);
+    }
+    PLACES_BY_CELL[r] = idx;
+  }
+  function placesInCell(cellId, res) {
+    return PLACES_BY_CELL[res].get(cellId) || [];
+  }
+  // pick the place closest to a hex's center
+  function closestPlaceToHex(cellId, res, places) {
+    const [hLat, hLng] = h3.cellToLatLng(cellId);
+    let best = null, bestD = Infinity;
+    for (const p of places) {
+      const dx = (p.lat - hLat), dy = (p.lng - hLng);
+      const d = dx*dx + dy*dy;
+      if (d < bestD) { bestD = d; best = p; }
+    }
+    return best;
+  }
+
+  // Resolve each persona's key place names against PLACES[]; record misses for UI.
+  function resolvePersona(p) {
+    const resolved = [];
+    const missing = [];
+    for (const entry of p.places) {
+      const hit = PLACES.find(pp => pp.n.toLowerCase().includes(entry.match.toLowerCase()));
+      if (hit) resolved.push({ ...entry, place: hit });
+      else missing.push(entry.label);
+    }
+    return { resolved, missing };
+  }
+  for (const k of Object.keys(PERSONAS)) {
+    const r = resolvePersona(PERSONAS[k]);
+    PERSONAS[k].resolved = r.resolved;
+    PERSONAS[k].missing = r.missing;
+  }
+
+  // ---------- build MapLibre map (CARTO dark matter,no token needed) ----------
+  const map = new maplibregl.Map({
+    container: 'map',
+    style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+    center: DEFAULT_CAMERA.center,
+    zoom: DEFAULT_CAMERA.zoom,
+    pitch: DEFAULT_CAMERA.pitch,
+    bearing: DEFAULT_CAMERA.bearing,
+    antialias: true,
+    attributionControl: { compact: true },
+  });
+
+  // compass / reset-north control in top-right corner.
+  // showCompass: true gives a clickable compass dial (resets bearing to 0).
+  map.addControl(
+    new maplibregl.NavigationControl({
+      showCompass: true,
+      showZoom: false,
+      visualizePitch: true,
+    }),
+    'bottom-left'
+  );
+
+  // ---------- deck.gl overlay ----------
+  const { MapboxOverlay, H3HexagonLayer, ScatterplotLayer } = deck;
+
+  // resolution-aware extrusion: lower-res hexes are bigger area so heights look right
+  function elevationScaleFor(res) {
+    // baseline ~14m per visit at res 10 (~65m hex). Coarser hexes get amplified less per visit
+    // because they aggregate many visits,visually we want max column not to dwarf the city.
+    return { 5: 0.7, 6: 1.5, 7: 3, 8: 5.5, 9: 9, 10: 14 }[res] || 14;
+  }
+
+  const state = {
+    res: 10,
+    auto: true,
+    data: PARENT_CACHE[10],
+    maxV: 190,
+    activePersona: null,        // 'home' | 'adventure' | 'traveler' | 'student' | null
+    highlightCells: null,       // Set<cellId> at the current res, or null = no filter
+    highlightPlaceCells: null,  // Set<cellId> for dots
+    // view-mode (bottom toolbar) toggles
+    showPoints: true,
+    showHeatmap: true,
+    showTowers: true,
+    // category multi-select. Default: all 8 on.
+    activeCats: new Set(CAT_ORDER),
+    catsRev: 0,                 // bumped whenever activeCats mutates → drives updateTriggers
+  };
+
+  function buildLayers() {
+    const elevScale = elevationScaleFor(state.res);
+    const cellLookup = new Map(state.data.map(d => [d.h, d.v]));
+
+    // a hex is "tagged" if one of the 87 places falls inside it at the current res.
+    // Bump-style: untagged hexes = flat scratch trail; tagged hexes = 3D Turbo columns.
+    const taggedCells = new Set();
+    for (const p of PLACES) taggedCells.add(p.cell[state.res]);
+
+    const tagged = [];
+    const scratch = [];
+    for (const d of state.data) {
+      (taggedCells.has(d.h) ? tagged : scratch).push(d);
+    }
+
+    // color/height scale is keyed to the tagged max,that's what the legend describes
+    const maxV = tagged.length > 0 ? Math.max(...tagged.map(d => d.v)) : 1;
+    state.maxV = maxV;
+    document.getElementById('legendMax').textContent = String(maxV);
+
+    // Pre-compute per-tagged-hex "is any place here in an active category?"
+    // so the tower color lookup is O(1) and not O(N) per accessor call.
+    const hexHasActiveCat = new Map();
+    for (const p of PLACES) {
+      const cellId = p.cell[state.res];
+      const cur = hexHasActiveCat.get(cellId);
+      if (cur === true) continue;
+      hexHasActiveCat.set(cellId, state.activeCats.has(p.cat));
+    }
+
+    // place dots — z sits on top of the column if towers are on; otherwise low.
+    const placePoints = PLACES.map(p => {
+      const cell = p.cell[state.res];
+      const v = cellLookup.get(cell) || 0;
+      const c = CATS[p.cat] || CATS.food;
+      return {
+        n: p.n,
+        lat: p.lat,
+        lng: p.lng,
+        cat: p.cat,
+        cell,
+        v,
+        z: state.showTowers ? (v * elevScale + 12) : 6,
+        color: c.rgb,
+      };
+    });
+
+    // dim logic combines persona highlight + category filter
+    const hl = state.highlightCells;
+    const isDimCell = (cellId) => hl !== null && !hl.has(cellId);
+    const isDimPlace = (pp) => {
+      if (hl !== null && !hl.has(pp.cell)) return true;
+      if (!state.activeCats.has(pp.cat)) return true;
+      return false;
+    };
+
+    const layers = [];
+
+    // ---- flat scratch trail (everywhere you've been but didn't tag) ----
+    if (state.showHeatmap) {
+      layers.push(new H3HexagonLayer({
+        id: 'scratch-' + state.res,
+        data: scratch,
+        pickable: true,
+        extruded: false,
+        filled: true,
+        stroked: false,
+        getHexagon: d => d.h,
+        getFillColor: [255, 110, 175, 140],
+        coverage: 0.92,
+      }));
+    }
+
+    // ---- 3D Turbo columns for tagged places only ----
+    if (state.showTowers) {
+      layers.push(new H3HexagonLayer({
+        id: 'tagged-' + state.res,
+        data: tagged,
+        pickable: true,
+        extruded: true,
+        filled: true,
+        stroked: false,
+        wireframe: false,
+        getHexagon: d => d.h,
+        getFillColor: d => {
+          const t = Math.log(d.v + 1) / Math.log(maxV + 1);
+          const [r, g, b] = turbo(t);
+          const dim = isDimCell(d.h) || hexHasActiveCat.get(d.h) === false;
+          return [r, g, b, dim ? 60 : 235];
+        },
+        getElevation: d => d.v * elevScale,
+        elevationScale: 1,
+        coverage: 0.92,
+        material: {
+          ambient: 0.55,
+          diffuse: 0.7,
+          shininess: 32,
+          specularColor: [60, 60, 60],
+        },
+        updateTriggers: {
+          getFillColor: [maxV, state.activePersona, state.catsRev],
+          getElevation: [state.res],
+        },
+      }));
+    }
+
+    // ---- glowing category bubbles (sized by log count) ----
+    if (state.showPoints) {
+      // soft glow halo
+      layers.push(new ScatterplotLayer({
+        id: 'glow-' + state.res,
+        data: placePoints,
+        pickable: false,
+        stroked: false,
+        filled: true,
+        getPosition: d => [d.lng, d.lat, d.z],
+        getRadius: d => Math.sqrt(d.v + 1) * 2.2 + 8,
+        radiusUnits: 'pixels',
+        radiusMinPixels: 12,
+        radiusMaxPixels: 58,
+        getFillColor: d => {
+          const [r, g, b] = d.color;
+          const dim = isDimPlace(d);
+          return [r, g, b, dim ? 10 : 70];
+        },
+        updateTriggers: {
+          getFillColor: [state.activePersona, state.catsRev],
+          getRadius: [state.res],
+        },
+      }));
+
+      // bright core dot
+      layers.push(new ScatterplotLayer({
+        id: 'places-' + state.res,
+        data: placePoints,
+        pickable: true,
+        stroked: true,
+        filled: true,
+        getPosition: d => [d.lng, d.lat, d.z],
+        getRadius: d => Math.sqrt(d.v + 1) * 0.9 + 3.5,
+        radiusUnits: 'pixels',
+        radiusMinPixels: 4,
+        radiusMaxPixels: 16,
+        getFillColor: d => {
+          const [r, g, b] = d.color;
+          const dim = isDimPlace(d);
+          return [r, g, b, dim ? 75 : 250];
+        },
+        getLineColor: d => {
+          const dim = isDimPlace(d);
+          return dim ? [10, 10, 14, 80] : [255, 255, 255, 230];
+        },
+        lineWidthUnits: 'pixels',
+        getLineWidth: 1.2,
+        lineWidthMinPixels: 1,
+        updateTriggers: {
+          getFillColor: [state.activePersona, state.catsRev],
+          getLineColor: [state.activePersona, state.catsRev],
+          getRadius: [state.res],
+        },
+      }));
+    }
+
+    return layers;
+  }
+
+  // tooltip can be in two states: transient (hover) and pinned (click).
+  // pinned takes priority and is dismissed by clicking blank map or pressing Esc.
+  let pinnedHex = null; // { kind: 'hex'|'place', ... }
+
+  function showTip(html, x, y) {
+    const tip = document.getElementById('tooltip');
+    tip.innerHTML = html;
+    tip.style.left = x + 'px';
+    tip.style.top = y + 'px';
+    tip.classList.add('visible');
+  }
+
+  // hex column hover/click: prefer tagged-place name if one lives in this hex,
+  // otherwise fall back to log count + coords.
+  function renderTipForHex(hexCell, logs, x, y) {
+    const matches = placesInCell(hexCell, state.res);
+    let nameLine, extraLine;
+    if (matches.length > 0) {
+      const closest = closestPlaceToHex(hexCell, state.res, matches);
+      nameLine = '<div class="big">' + escapeHtml(closest.n) + '</div>';
+      extraLine = '<div class="coord">' + logs + ' log' + (logs === 1 ? '' : 's')
+        + (matches.length > 1 ? ' · +' + (matches.length - 1) + ' more here' : '')
+        + '</div>';
+    } else {
+      nameLine = '<div class="big">' + logs + ' log' + (logs === 1 ? '' : 's') + '</div>';
+      try {
+        const [lat, lng] = h3.cellToLatLng(hexCell);
+        extraLine = '<div class="coord">' + lat.toFixed(4) + '°N, ' + lng.toFixed(4) + '°E</div>';
+      } catch (e) { extraLine = ''; }
+    }
+    showTip(nameLine + extraLine, x, y);
+  }
+
+  // dot hover/click: always show the place name + however many logs the
+  // containing hex has at the current resolution.
+  function renderTipForPlace(place, x, y) {
+    const nameLine = '<div class="big">' + escapeHtml(place.n) + '</div>';
+    const extraLine = '<div class="coord">'
+      + (place.v > 0 ? place.v + ' log' + (place.v === 1 ? '' : 's') : 'no logs in this hex')
+      + '</div>';
+    showTip(nameLine + extraLine, x, y);
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    }[c]));
+  }
+
+  function hideTipIfNotPinned() {
+    if (!pinnedHex) document.getElementById('tooltip').classList.remove('visible');
+  }
+
+  function objectIsPlace(obj) { return obj && typeof obj.n === 'string'; }
+
+  const overlay = new MapboxOverlay({
+    interleaved: false,
+    layers: buildLayers(),
+    onHover: (info) => {
+      if (pinnedHex) return; // don't override pinned
+      if (!info || !info.object) {
+        document.getElementById('tooltip').classList.remove('visible');
+        return;
+      }
+      if (objectIsPlace(info.object)) {
+        renderTipForPlace(info.object, info.x, info.y);
+      } else {
+        renderTipForHex(info.object.h, info.object.v, info.x, info.y);
+      }
+    },
+    onClick: (info) => {
+      if (!info || !info.object) return;
+      if (objectIsPlace(info.object)) {
+        pinnedHex = { kind: 'place', place: info.object };
+        renderTipForPlace(info.object, info.x, info.y);
+      } else {
+        pinnedHex = { kind: 'hex', h: info.object.h, v: info.object.v };
+        renderTipForHex(info.object.h, info.object.v, info.x, info.y);
+      }
+      return true;
+    },
+  });
+
+  // globe projection: must be set after the style loads. Globe at low zoom,
+  // auto-transitions to flat Mercator around zoom 6 so the 3D hex columns
+  // render correctly at city scale.
+  map.on('style.load', () => {
+    try {
+      if (typeof map.setProjection === 'function') {
+        map.setProjection({ type: 'globe' });
+      }
+    } catch (e) { console.warn('globe projection unavailable:', e); }
+  });
+
+  map.on('load', () => {
+    map.addControl(overlay);
+    document.getElementById('loading').classList.add('hidden');
+    setTimeout(() => document.getElementById('loading').remove(), 600);
+  });
+
+  // clicking blank map (no hex hit) unpins
+  map.on('click', (e) => {
+    // deck.gl's onClick fires first; if it pinned, the picking layer claims the click.
+    // Use deck.gl's pickObject to check what's under the cursor at click time.
+    const picked = overlay._deck && overlay._deck.pickObject
+      ? overlay._deck.pickObject({ x: e.point.x, y: e.point.y, radius: 1 })
+      : null;
+    if (!picked && pinnedHex) {
+      pinnedHex = null;
+      document.getElementById('tooltip').classList.remove('visible');
+    }
+  });
+
+  // Esc dismisses pinned tooltip
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && pinnedHex) {
+      pinnedHex = null;
+      document.getElementById('tooltip').classList.remove('visible');
+    }
+  });
+
+  // ---------- auto resolution by zoom ----------
+  function autoResForZoom(z) {
+    if (z >= 13.5) return 10;
+    if (z >= 12) return 10;
+    if (z >= 10.8) return 9;
+    if (z >= 9.5) return 8;
+    if (z >= 8.2) return 7;
+    if (z >= 6.5) return 6;
+    return 5;
+  }
+  const RES_LABEL = {
+    5: 'res 5 · ~9 km',
+    6: 'res 6 · ~3.2 km',
+    7: 'res 7 · ~1.2 km',
+    8: 'res 8 · ~460 m',
+    9: 'res 9 · ~175 m',
+    10: 'res 10 · ~65 m',
+  };
+
+  function applyRes(res, fromAuto) {
+    if (res === state.res) return;
+    state.res = res;
+    state.data = PARENT_CACHE[res];
+    document.getElementById('resLabel').textContent = RES_LABEL[res];
+    document.getElementById('resSlider').value = String(res);
+    // resolution change invalidates the pinned hex (it lived in the previous res grid)
+    if (pinnedHex) {
+      pinnedHex = null;
+      document.getElementById('tooltip').classList.remove('visible');
+    }
+    // if a persona is active, recompute its highlight set against the new res grid
+    if (state.activePersona && PERSONAS[state.activePersona]) {
+      const cells = new Set();
+      for (const r of PERSONAS[state.activePersona].resolved) {
+        cells.add(r.place.cell[state.res]);
+      }
+      state.highlightCells = cells;
+    }
+    overlay.setProps({ layers: buildLayers() });
+  }
+
+  map.on('zoom', () => {
+    if (!state.auto) return;
+    const z = map.getZoom();
+    const r = autoResForZoom(z);
+    if (r !== state.res) applyRes(r, true);
+  });
+
+  // ---------- UI bindings ----------
+  const resSlider = document.getElementById('resSlider');
+  const autoPill = document.getElementById('autoPill');
+
+  resSlider.addEventListener('input', (e) => {
+    state.auto = false;
+    autoPill.classList.remove('active');
+    applyRes(parseInt(e.target.value, 10), false);
+  });
+  autoPill.addEventListener('click', () => {
+    state.auto = !state.auto;
+    autoPill.classList.toggle('active', state.auto);
+    if (state.auto) {
+      const r = autoResForZoom(map.getZoom());
+      applyRes(r, true);
+    }
+  });
+
+  // ---------- persona activation ----------
+  const storyCard = document.getElementById('storyCard');
+
+  function setActivePersonaButton(key) {
+    // legacy hidden bar
+    document.querySelectorAll('.persona-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.persona === key);
+    });
+    // new mini buttons inside left panel
+    document.querySelectorAll('.persona-mini').forEach(b => {
+      b.classList.toggle('active', b.dataset.persona === key);
+    });
+  }
+
+  function clearPin() {
+    pinnedHex = null;
+    document.getElementById('tooltip').classList.remove('visible');
+  }
+
+  function activatePersona(key) {
+    if (key === 'all' || !PERSONAS[key]) {
+      // reset
+      state.activePersona = null;
+      state.highlightCells = null;
+      setActivePersonaButton('all');
+      storyCard.classList.remove('visible');
+      storyCard.setAttribute('aria-hidden', 'true');
+      clearPin();
+      overlay.setProps({ layers: buildLayers() });
+      map.flyTo({
+        center: DEFAULT_CAMERA.center,
+        zoom: DEFAULT_CAMERA.zoom,
+        pitch: DEFAULT_CAMERA.pitch,
+        bearing: DEFAULT_CAMERA.bearing,
+        speed: 1.3, curve: 1.5, essential: true,
+      });
+      return;
+    }
+
+    const persona = PERSONAS[key];
+    state.activePersona = key;
+
+    // Build the highlight set: every place's hex at the current res
+    const cells = new Set();
+    for (const r of persona.resolved) {
+      cells.add(r.place.cell[state.res]);
+    }
+    state.highlightCells = cells;
+
+    setActivePersonaButton(key);
+    renderStoryCard(persona, key);
+    clearPin();
+    overlay.setProps({ layers: buildLayers() });
+
+    // Fit camera to the bbox of resolved places
+    if (persona.resolved.length > 0) {
+      const lats = persona.resolved.map(r => r.place.lat);
+      const lngs = persona.resolved.map(r => r.place.lng);
+      const sw = [Math.min(...lngs), Math.min(...lats)];
+      const ne = [Math.max(...lngs), Math.max(...lats)];
+      map.fitBounds([sw, ne], {
+        padding: { top: 60, right: 380, bottom: 130, left: 320 },
+        pitch: 52,
+        bearing: -18,
+        maxZoom: 13.5,
+        duration: 1400,
+        essential: true,
+      });
+    }
+  }
+
+  function renderStoryCard(persona, key) {
+    storyCard.dataset.persona = key;
+    document.getElementById('storyIcon').textContent = persona.icon;
+    document.getElementById('storyTitle').textContent = persona.title;
+    document.getElementById('storyTagline').textContent = persona.tagline;
+    document.getElementById('storyBody').textContent = persona.body;
+
+    const placesEl = document.getElementById('storyPlaces');
+    placesEl.innerHTML = '';
+    persona.resolved.forEach(r => {
+      const b = document.createElement('button');
+      b.className = 'story-place';
+      b.dataset.placeName = r.place.n;
+      b.innerHTML = '<span class="pi">' + r.icon + '</span>' + escapeHtml(r.label);
+      placesEl.appendChild(b);
+    });
+
+    const missingEl = document.getElementById('storyMissing');
+    missingEl.textContent = persona.missing.length > 0
+      ? 'Not in my Bump tags yet: ' + persona.missing.join(', ')
+      : '';
+
+    storyCard.classList.add('visible');
+    storyCard.setAttribute('aria-hidden', 'false');
+  }
+
+  document.getElementById('personaBar').addEventListener('click', (e) => {
+    const btn = e.target.closest('.persona-btn');
+    if (!btn) return;
+    activatePersona(btn.dataset.persona);
+  });
+
+  // ---------- category panel (NEW: primary filter) ----------
+  (function buildCategoryList() {
+    const list = document.getElementById('catList');
+    list.innerHTML = '';
+    for (const key of CAT_ORDER) {
+      const c = CATS[key];
+      const count = CAT_COUNTS[key] || 0;
+      const li = document.createElement('li');
+      li.className = 'cat-item';
+      li.dataset.cat = key;
+      li.style.setProperty('--cat-color', c.color);
+      li.style.setProperty('--cat-rgb', c.rgb.join(','));
+      li.innerHTML =
+        '<span class="cat-dot"></span>' +
+        '<span class="cat-name"><span class="cat-emoji">' + c.emoji + '</span>' + c.label + '</span>' +
+        '<span class="cat-count">' + count + '</span>';
+      list.appendChild(li);
+    }
+  })();
+
+  // also update the subtitle with the real count
+  document.getElementById('catSub').textContent =
+    'Bump scratch map · ' + PLACES.length + ' places · 8 categories';
+
+  function syncCategoryUI() {
+    document.querySelectorAll('.cat-item').forEach(li => {
+      li.classList.toggle('muted', !state.activeCats.has(li.dataset.cat));
+    });
+    const allOn = state.activeCats.size === CAT_ORDER.length;
+    document.getElementById('catSectionAction').textContent = allOn ? 'All on' : 'All on';
+  }
+
+  function bumpCatsAndRebuild() {
+    state.catsRev += 1;
+    syncCategoryUI();
+    overlay.setProps({ layers: buildLayers() });
+  }
+
+  document.getElementById('catList').addEventListener('click', (e) => {
+    const li = e.target.closest('.cat-item');
+    if (!li) return;
+    const key = li.dataset.cat;
+    // toggle: if currently the only active one and clicked, treat as "solo deselect" → all on
+    if (state.activeCats.has(key)) {
+      state.activeCats.delete(key);
+      // if user just turned the last one off, snap back to all-on so the map isn't blank
+      if (state.activeCats.size === 0) {
+        for (const k of CAT_ORDER) state.activeCats.add(k);
+      }
+    } else {
+      state.activeCats.add(key);
+    }
+    bumpCatsAndRebuild();
+  });
+
+  // "All on" link in the category section header → enable every category
+  document.getElementById('catSectionAction').addEventListener('click', () => {
+    state.activeCats = new Set(CAT_ORDER);
+    bumpCatsAndRebuild();
+  });
+
+  // ---------- persona-mini (NEW: secondary persona view inside left panel) ----------
+  document.getElementById('personaMiniList').addEventListener('click', (e) => {
+    const btn = e.target.closest('.persona-mini');
+    if (!btn) return;
+    activatePersona(btn.dataset.persona);
+  });
+  document.getElementById('personaReset').addEventListener('click', () => {
+    activatePersona('all');
+  });
+
+  // ---------- view-mode toolbar (NEW: bottom Points/Heatmap/3D Towers) ----------
+  document.getElementById('viewToolbar').addEventListener('click', (e) => {
+    const btn = e.target.closest('.vt-btn');
+    if (!btn) return;
+    const mode = btn.dataset.mode;
+    const keyMap = { points: 'showPoints', heatmap: 'showHeatmap', towers: 'showTowers' };
+    const k = keyMap[mode];
+    if (!k) return;
+    // toggle, but never let all three turn off (would leave a blank map)
+    if (state[k] && state.showPoints + state.showHeatmap + state.showTowers === 1) return;
+    state[k] = !state[k];
+    btn.classList.toggle('active', state[k]);
+    overlay.setProps({ layers: buildLayers() });
+  });
+
+  // initial UI sync (so the new panel reflects state on load)
+  syncCategoryUI();
+
+  // close button → reset to 'all'
+  document.getElementById('storyClose').addEventListener('click', () => {
+    activatePersona('all');
+  });
+
+  // click a "Key Places" pill → fly to that single place + pin its tooltip
+  document.getElementById('storyPlaces').addEventListener('click', (e) => {
+    const btn = e.target.closest('.story-place');
+    if (!btn) return;
+    const name = btn.dataset.placeName;
+    const place = PLACES.find(p => p.n === name);
+    if (!place) return;
+    map.flyTo({
+      center: [place.lng, place.lat],
+      zoom: 15.5,
+      pitch: 55,
+      bearing: -18,
+      speed: 1.2, curve: 1.5, essential: true,
+    });
+    // pin a tooltip at this place. Use the column-top position relative to screen.
+    const cell = place.cell[state.res];
+    const v = new Map(state.data.map(d => [d.h, d.v])).get(cell) || 0;
+    // wait one tick for the flyTo to start, then project
+    setTimeout(() => {
+      const pt = map.project([place.lng, place.lat]);
+      pinnedHex = { kind: 'place', place: { n: place.n, v, cell, lat: place.lat, lng: place.lng } };
+      renderTipForPlace(pinnedHex.place, pt.x, pt.y);
+    }, 50);
+  });
+
+  // mark the 'all' tab active on load
+  setActivePersonaButton('all');
+
+  // hide tooltip when leaving map
+  document.getElementById('map').addEventListener('mouseleave', () => {
+    document.getElementById('tooltip').classList.remove('visible');
+  });
+
+  // ---------- 360° orbit auto-rotate ----------
+  // requestAnimationFrame loop that increments map.bearing by a small amount per frame.
+  // Cancelled by clicking the same button again, or by user interaction (drag, flyTo, zoom-rotate).
+  const ORBIT_DEG_PER_SEC = 12; // full revolution in ~30s
+  let orbitRAF = null;
+  let orbitLastT = 0;
+
+  const orbitBtn = document.getElementById('orbitBtn');
+  function startOrbit() {
+    if (orbitRAF) return;
+    orbitBtn.classList.add('spinning');
+    orbitLastT = performance.now();
+    const tick = (now) => {
+      const dt = (now - orbitLastT) / 1000;
+      orbitLastT = now;
+      const next = (map.getBearing() + ORBIT_DEG_PER_SEC * dt + 540) % 360 - 180; // keep in [-180, 180)
+      map.setBearing(next);
+      orbitRAF = requestAnimationFrame(tick);
+    };
+    orbitRAF = requestAnimationFrame(tick);
+  }
+  function stopOrbit() {
+    if (!orbitRAF) return;
+    cancelAnimationFrame(orbitRAF);
+    orbitRAF = null;
+    orbitBtn.classList.remove('spinning');
+  }
+  orbitBtn.addEventListener('click', () => {
+    if (orbitRAF) stopOrbit(); else startOrbit();
+  });
+  // any manual rotation/drag cancels orbit
+  ['mousedown', 'touchstart', 'wheel'].forEach(ev => {
+    map.getCanvas().addEventListener(ev, () => { if (orbitRAF) stopOrbit(); }, { passive: true });
+  });
+
+  // ============================================================
+  //                STORY SCREEN: stats + charts
+  // ============================================================
+
+  // --- screen toggle ---
+  const mapScreen = document.getElementById('mapScreen');
+  const storyScreen = document.getElementById('storyScreen');
+  function showStory() {
+    if (orbitRAF) stopOrbit();
+    mapScreen.classList.remove('active');
+    storyScreen.classList.add('active');
+    storyScreen.scrollTop = 0;
+  }
+  function showMap() {
+    storyScreen.classList.remove('active');
+    mapScreen.classList.add('active');
+    // map may need a resize because it was hidden
+    setTimeout(() => map.resize(), 50);
+  }
+  document.getElementById('toStoryBtn').addEventListener('click', showStory);
+  document.getElementById('toMapBtn').addEventListener('click', showMap);
+  document.getElementById('footerBackBtn').addEventListener('click', showMap);
+
+  // --- compute stats once from the raw data ---
+  // (RAW already has normalised hex IDs and visit counts at res 10)
+  const stats = (() => {
+    const total = RAW.length;
+    const buckets = { once: 0, rare: 0, regular: 0, frequent: 0, core: 0 };
+    for (const d of RAW) {
+      if (d.v === 1) buckets.once++;
+      else if (d.v <= 5) buckets.rare++;
+      else if (d.v <= 20) buckets.regular++;
+      else if (d.v <= 50) buckets.frequent++;
+      else buckets.core++;
+    }
+    return { total, buckets };
+  })();
+
+  // --- hero stat cards ---
+  document.getElementById('statExplorerPct').textContent =
+    ((stats.buckets.once / stats.total) * 100).toFixed(0);
+  document.getElementById('statHomebody').textContent = stats.buckets.core;
+
+  // --- frequency breakdown rows ---
+  (function renderFreq() {
+    const container = document.getElementById('chartFreq');
+    const rows = [
+      { key: 'once',     label: 'Once',          sub: '',            color: '#c14a1a' },
+      { key: 'rare',     label: 'Rare',          sub: '(2–5)',       color: '#e07a3a' },
+      { key: 'regular',  label: 'Regular',       sub: '(6–20)',      color: '#7a9a4a' },
+      { key: 'frequent', label: 'Frequent',      sub: '(21–50)',     color: '#3a78b8' },
+      { key: 'core',     label: 'Core',          sub: '(50+)',       color: '#7a5aa8', isCore: true },
+    ];
+    for (const r of rows) {
+      const count = stats.buckets[r.key];
+      const pct = (count / stats.total) * 100;
+      const div = document.createElement('div');
+      div.className = 'freq-row';
+      div.innerHTML = `
+        <div class="freq-label ${r.isCore ? 'core' : ''}">${r.label}${r.isCore ? ' <small style="color:#c14a1a">♥</small>' : ''}<small>${r.sub}</small></div>
+        <div class="freq-track">
+          <div class="freq-fill" style="background:${r.color}; width: 0;" data-target="${pct}">
+            ${pct.toFixed(pct < 1 ? 1 : 0)}%${count > 50 ? ' · ' + count.toLocaleString() + ' hexes' : ''}
+          </div>
+        </div>`;
+      container.appendChild(div);
+    }
+    // animate widths in
+    requestAnimationFrame(() => {
+      container.querySelectorAll('.freq-fill').forEach(el => {
+        el.style.width = Math.max(el.dataset.target, 1.5) + '%';
+      });
+    });
+  })();
+
+  // --- chart: donut, logs by persona ---
+  (function renderDonut() {
+    const lookup = new Map(RAW.map(d => [d.h, d.v]));
+    const personaTotals = Object.entries(PERSONAS).map(([key, p]) => {
+      const total = p.resolved.reduce((sum, r) => sum + (lookup.get(r.place.cell[10]) || 0), 0);
+      return { key, title: p.title, icon: p.icon, total };
+    });
+
+    const colors = {
+      home: '#ff8a4d',
+      adventure: '#7ac66e',
+      traveler: '#5fa8e8',
+      student: '#b28af7',
+    };
+
+    const sumAll = personaTotals.reduce((s, p) => s + p.total, 0);
+    const radius = 110;
+    const inner = 64;
+    const w = 280, h = 240;
+
+    const svg = d3.select('#chartDonut').append('svg')
+      .attr('width', w).attr('height', h);
+
+    const g = svg.append('g').attr('transform', `translate(${w/2}, ${h/2})`);
+
+    const pie = d3.pie().value(d => d.total).sort(null);
+    const arc = d3.arc().innerRadius(inner).outerRadius(radius);
+
+    g.selectAll('path')
+      .data(pie(personaTotals))
+      .join('path')
+      .attr('d', arc)
+      .attr('fill', d => colors[d.data.key])
+      .attr('stroke', '#fff')
+      .attr('stroke-width', 2);
+
+    // center label = sum
+    g.append('text')
+      .attr('text-anchor', 'middle')
+      .attr('y', -4)
+      .style('font', '700 22px -apple-system, system-ui')
+      .style('fill', '#2c1810')
+      .text(sumAll.toLocaleString());
+    g.append('text')
+      .attr('text-anchor', 'middle')
+      .attr('y', 14)
+      .style('font', '500 10px -apple-system, system-ui')
+      .style('fill', '#94776a')
+      .style('letter-spacing', '0.14em')
+      .text('TOTAL LOGS');
+
+    // legend
+    const legend = d3.select('#chartDonut').append('div').attr('class', 'donut-legend');
+    legend.selectAll('div')
+      .data(personaTotals.sort((a, b) => b.total - a.total))
+      .join('div').attr('class', 'donut-leg')
+      .html(d => `
+        <span class="sw" style="background:${colors[d.key]}"></span>
+        <span>${d.icon} ${d.title}</span>
+        <span class="v">${d.total.toLocaleString()} (${((d.total/sumAll)*100).toFixed(1)}%)</span>
+      `);
+  })();
+
+  // --- key insights, filled from data ---
+  (function renderInsights() {
+    const lookup = new Map(RAW.map(d => [d.h, d.v]));
+    const punna = PLACES.find(p => p.n.includes('Punna'));
+    const punnaV = punna ? (lookup.get(punna.cell[10]) || 0) : 0;
+    const oncePct = ((stats.buckets.once / stats.total) * 100).toFixed(0);
+    const corePct = ((stats.buckets.core / stats.total) * 100).toFixed(1);
+    const taggedPct = ((87 / stats.total) * 100).toFixed(1);
+
+    const items = [
+      `<strong>${oncePct}% of my hexes are one-offs.</strong> I'm an explorer in breadth, not in repetition,most places get exactly one GPS ping and then I move on.`,
+      `<strong>${stats.buckets.core} hexes (${corePct}%) hold the heart of my routine.</strong> If you want to find me on a random Tuesday, you only have to check 20 squares out of 3,221.`,
+      `<strong>Punna Residence 5 alone has ${punnaV} logs.</strong> That's where I sleep, and it shows,no other hex even gets close.`,
+      `<strong>Only ${taggedPct}% of visited hexes are tagged places.</strong> The rest are streets and detours,the unseen tissue of a life.`,
+      `<strong>Adventure Me is the smallest persona by volume but the largest by area.</strong> Few trips, but each one reaches far north or far south.`,
+    ];
+    const ul = document.getElementById('insightsList');
+    items.forEach(html => {
+      const li = document.createElement('li');
+      li.innerHTML = html;
+      ul.appendChild(li);
+    });
+  })();
+
+  // --- predicting me: D3 tree ---
+  (function renderTree() {
+    const data = {
+      name: 'Predict me',
+      children: [
+        {
+          name: 'Weekday',
+          children: [
+            { name: 'Before noon → home practice (yoga, breathwork, Parami)', leaf: true, color: '#ff8a4d' },
+            { name: '1 PM – 6 PM → Choei (work)', leaf: true, color: '#ff8a4d' },
+            { name: '7 PM → restaurant', leaf: true, color: '#ff8a4d' },
+            { name: '8 PM → home (Punna)', leaf: true, color: '#ff8a4d' },
+          ]
+        },
+        {
+          name: 'Weekend',
+          children: [
+            { name: 'Morning → hike or cafe study', leaf: true, color: '#7ac66e' },
+            { name: 'Evening → sauna, dance, or cat cafe', leaf: true, color: '#b28af7' },
+          ]
+        },
+        {
+          name: 'Travel',
+          children: [
+            { name: 'Bangkok (work trip / airport)', leaf: true, color: '#5fa8e8' },
+            { name: 'Pai or Chiang Dao (escape)', leaf: true, color: '#7ac66e' },
+          ]
+        },
+      ],
+    };
+
+    const width = 1100;
+    const height = 400;
+    const margin = { top: 24, right: 360, bottom: 24, left: 100 };
+
+    const root = d3.hierarchy(data);
+    const treeLayout = d3.tree().size([
+      height - margin.top - margin.bottom,
+      width - margin.left - margin.right,
+    ]);
+    treeLayout(root);
+
+    const svg = d3.select('#chartTree').append('svg')
+      .attr('viewBox', `0 0 ${width} ${height}`)
+      .attr('preserveAspectRatio', 'xMidYMid meet');
+
+    const g = svg.append('g').attr('transform', `translate(${margin.left}, ${margin.top})`);
+
+    g.selectAll('path.link')
+      .data(root.links())
+      .join('path')
+      .attr('class', 'link')
+      .attr('d', d3.linkHorizontal().x(d => d.y).y(d => d.x));
+
+    const node = g.selectAll('g.node')
+      .data(root.descendants())
+      .join('g')
+      .attr('class', 'node')
+      .attr('transform', d => `translate(${d.y}, ${d.x})`);
+
+    node.append('circle')
+      .attr('r', d => d.data.leaf ? 6 : 5)
+      .attr('stroke', d => d.data.color || '#a06940')
+      .attr('fill', d => d.data.leaf ? (d.data.color || '#fff') : '#fff');
+
+    node.append('text')
+      .attr('dy', '0.32em')
+      .attr('x', d => d.children ? -10 : 12)
+      .style('text-anchor', d => d.children ? 'end' : 'start')
+      .text(d => d.data.name);
+  })();
+})();
+</script>
+</body>
+</html>
