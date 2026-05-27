@@ -1,4 +1,0 @@
-[server]
-# Required so files in static/ are served as real URLs at /app/static/<filename>.
-# This bypasses the srcdoc iframe restriction that breaks MapLibre's WebGL workers.
-enableStaticServing = true
